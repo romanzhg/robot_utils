@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import random
 import cv2
+import math
 
 from itertools import product
 from math import cos, sin, pi, sqrt
@@ -43,6 +44,19 @@ class State(object):
     def euclidean_distance(self, state):
         assert (state)
         return sqrt((state.x - self.x)**2 + (state.y - self.y)**2)
+
+    def inteprolate_percentage(self, target, percentage):
+        angle = math.atan2(target.y - self.y, target.x - self.x)
+        d = self.euclidean_distance(target) * percentage
+        dx = d * math.cos(angle)
+        dy = d * math.sin(angle)
+        return int(self.x + dx), int(self.y + dy)
+
+    def extend_dist(self, target, dist):
+        angle = math.atan2(target.y - self.y, target.x - self.x)
+        dx = dist * math.cos(angle)
+        dy = dist * math.sin(angle)
+        return int(self.x + dx), int(self.y + dy)
     
 class RRTPlanner(object):
     """
@@ -69,13 +83,13 @@ class RRTPlanner(object):
         """
         Sample a new state uniformly randomly on the image. 
         """
-        cols = self.occ_grid[0]
-        rows = self.occ_grid[1]
+        cols = self.occ_grid.shape[0]
+        rows = self.occ_grid.shape[1]
 
-        x = random.randint(0, cols -1)
-        y = random.randint(0, rows -1)
+        x = random.randint(0, cols - 1)
+        y = random.randint(0, rows - 1)
         return State(x, y, None)
-           
+
 
     def _follow_parent_pointers(self, state):
         """
@@ -124,6 +138,11 @@ class RRTPlanner(object):
         # and {0, ..., rows -1} respectively
         x = 0
         y = 0
+        if s_nearest.euclidean_distance(s_rand) < max_radius:
+            x = s_rand.x
+            y = s_rand.y
+        else:
+            x, y = s_nearest.extend_dist(s_rand, max_radius)
 
         s_new = State(x, y, s_nearest)
         return s_new
@@ -143,7 +162,10 @@ class RRTPlanner(object):
         for i in range(max_checks):
             # TODO: check if the inteprolated state that is float(i)/max_checks * dist(s_from, s_new)
             # away on the line from s_from to s_new is free or not. If not free return False
-            return False
+
+            x, y = s_from.inteprolate_percentage(s_to, float(i) / max_checks)
+            if not self.state_is_free(State(x, y, None)):
+                return False
             
         # Otherwise the line is free, so return true
         return True
@@ -165,32 +187,33 @@ class RRTPlanner(object):
         # image to be used to display the tree
         img = np.copy(self.world)
 
-        print("shape of self.occ_grid", self.occ_grid.shape)
-        print("shape of self.world", self.world.shape)
-
         plan = [start_state]
         
         for step in range(max_num_steps):
 
             # TODO: Use the methods of this class as in the slides to
             # compute s_new
-            s_nearest = None
-            s_new = None
+            s_rand = self.sample_state()
+            if not self.state_is_free(s_rand):
+                continue
             
-            # if self.path_is_obstacle_free(s_nearest, s_new):
-            #     tree_nodes.add(s_new)
-            #     s_nearest.children.append(s_new)
+            s_nearest = self.find_closest_state(tree_nodes, s_rand)
+            s_new = self.steer_towards(s_nearest, s_rand, max_steering_radius)
+            
+            if self.path_is_obstacle_free(s_nearest, s_new):
+                tree_nodes.add(s_new)
+                s_nearest.children.append(s_new)
 
-            #     # If we approach the destination within a few pixels
-            #     # we're done. Return the path.
-            #     if s_new.euclidean_distance(dest_state) < dest_reached_radius:
-            #         dest_state.parent = s_new
-            #         plan = self._follow_parent_pointers(dest_state)
-            #         break
+                # If we approach the destination within a few pixels
+                # we're done. Return the path.
+                if s_new.euclidean_distance(dest_state) < dest_reached_radius:
+                    dest_state.parent = s_new
+                    plan = self._follow_parent_pointers(dest_state)
+                    break
                 
-            #     # plot the new node and edge
-            #     cv2.circle(img, (s_new.x, s_new.y), 2, (0,0,0))
-            #     cv2.line(img, (s_nearest.x, s_nearest.y), (s_new.x, s_new.y), (255,0,0))
+                # plot the new node and edge
+                cv2.circle(img, (s_new.x, s_new.y), 2, (0,0,0))
+                cv2.line(img, (s_nearest.x, s_nearest.y), (s_new.x, s_new.y), (255,0,0))
 
             # Keep showing the image for a bit even
             # if we don't add a new node and edge
@@ -216,7 +239,7 @@ if __name__ == "__main__":
     rrt = RRTPlanner(world)
 
     start_state = State(10, 10, None)
-    dest_state = State(500, 500, None)
+    dest_state = State(600, 600, None)
 
     max_num_steps = 1000     # max number of nodes to be added to the tree 
     max_steering_radius = 30 # pixels
