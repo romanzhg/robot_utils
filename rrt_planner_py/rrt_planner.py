@@ -1,4 +1,9 @@
 #!/usr/bin/python3
+
+"""
+To run:
+python3 rrt_planner.py map.pkl
+"""
 import sys
 import time
 import pickle
