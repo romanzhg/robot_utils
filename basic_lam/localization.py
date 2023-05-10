@@ -73,12 +73,13 @@ class Observation(object):
     
 def dynamics_model(state, control, dt):
     # TODO: fill this
-    #expected_state = State(?, ?)
+    expected_state = State(state.x + control.vx * dt, state.y + control.vy * dt)
     return expected_state
 
 def measurement_model(state, landmark):
     # TODO: fill this
-    #expected_observation = Observation(?, ?)
+    range = np.linalg.norm(landmark.as_vector() - state.as_vector())
+    expected_observation = Observation(landmark.id, range)
     return expected_observation
     
     
@@ -99,14 +100,16 @@ class LocalizationWithRangeMeasurements(object):
         self.landmarks = landmarks
         self.num_timesteps = num_timesteps
         self.dt = dt
-        self.dynamics_noise_std_dev = dynamics_model_std_dev
+        self.dynamics_noise_std_dev = dynamics_noise_std_dev
         self.obs_noise_std_dev = obs_noise_std_dev
         
     def dynamics_cost(self, state_curr, state_prev, control_prev):
         #TODO: evaluate the dynamics model and return the difference between
         #the current state and expected state as predicted from the dynamics 
         # I.e. returns a vector 
-        return diff
+        expected = dynamics_model(state_prev, control_prev, self.dt)
+        return state_curr.diff(expected)
+
 
     
     def measurement_cost(self, state, landmark, observation):
@@ -114,7 +117,8 @@ class LocalizationWithRangeMeasurements(object):
         # between the given observation and the one predicted by the
         # measurement model
         # I.e. returns a vector
-        return diff
+        expected = measurement_model(state, landmark)
+        return observation.diff(expected)
 
     
     def cost_function(self, x):
@@ -129,18 +133,25 @@ class LocalizationWithRangeMeasurements(object):
 
         # TODO: Extend F by the deviation of the estimated first state (x[0], x[1])
         # from the given first state self.init_state
-        # deviation_from_init_state = ?
+        deviation_from_init_state = [0, 0]
         F = np.concatenate((F, deviation_from_init_state))
 
         
         for t in range(1, T):
             #TODO: Extend F by the dynamical model error from one estimated state to the next
             #      as defined by the current vector x 
-            F = np.concatenate((F, dc))
+            state_curr = State(x[t * 2], x[t * 2 +1])
+            state_prev = State(x[(t - 1) * 2], x[(t - 1) * 2 +1])
+            F = np.concatenate((F, self.dynamics_cost(state_curr, state_prev, self.controls_across_time[t-1])))
         
         for t in range(self.num_timesteps):
             #TODO: Extend F by the observation model error of the observations made at time t
-            #      in estimated state at time t, as currently defined by vector x  
+            #      in estimated state at time t, as currently defined by vector x
+            for ob in self.observations_across_time[t]:
+                state_curr = State(x[t * 2], x[t * 2 +1])
+                landmark_curr = self.landmarks[ob.landmark_id]
+                F = np.concatenate((F,
+                    self.measurement_cost(state_curr, landmark_curr, ob)))
             
         return F
         
@@ -242,7 +253,7 @@ if __name__ == "__main__":
 
 
     print("Norm of difference between estimated states and true states")
-    for t in xrange(num_timesteps):
+    for t in range(num_timesteps):
         print(np.linalg.norm(resulting_states[t].diff(states[t])))
         
     true_rx = [r.x for r in states]

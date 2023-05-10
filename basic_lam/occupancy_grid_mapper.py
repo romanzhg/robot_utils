@@ -299,8 +299,6 @@ class HuskyMapper:
         # This is because the z-axis of husky_1/base_laser is pointing downwards, while for husky_1/base_link and the map frame
         # the z-axis points upwards
 
-        points_xyz_in_baselaser_frame_no_bound = [np.array([r*cos(theta), r*sin(theta), 0])   for (r, theta) in zip(ranges_in_baselaser_frame, angles_in_baselaser_frame) if r > self.min_laser_range]
-
         points_xyz_in_baselaser_frame = [np.array([r*cos(theta), r*sin(theta), 0])   for (r, theta) in zip(ranges_in_baselaser_frame, angles_in_baselaser_frame) if r < self.max_laser_range and r > self.min_laser_range]
         
         points_xyz_in_map_frame = self.from_laser_to_map_coordinates(points_xyz_in_baselaser_frame)
