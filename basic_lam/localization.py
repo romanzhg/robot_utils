@@ -137,12 +137,21 @@ class LocalizationWithRangeMeasurements(object):
         F = np.concatenate((F, deviation_from_init_state))
 
         
+        dynamics_noise_covariance = (self.dynamics_noise_std_dev**2) * np.identity(State.dim)
+        dynamics_noise_covariance_inv = np.linalg.inv(dynamics_noise_covariance)
+        obs_noise_covariance = (obs_noise_std_dev**2) * np.identity(Observation.dim)
+        obs_noise_covariance_inv = np.linalg.inv(obs_noise_covariance)
+
         for t in range(1, T):
             #TODO: Extend F by the dynamical model error from one estimated state to the next
             #      as defined by the current vector x 
             state_curr = State(x[t * 2], x[t * 2 +1])
             state_prev = State(x[(t - 1) * 2], x[(t - 1) * 2 +1])
-            F = np.concatenate((F, self.dynamics_cost(state_curr, state_prev, self.controls_across_time[t-1])))
+            dc = self.dynamics_cost(state_curr, state_prev, self.controls_across_time[t-1])
+            v = np.dot(np.dot(dc.transpose(), dynamics_noise_covariance_inv), dc)
+            # F = np.concatenate((F, dc))
+            F = np.concatenate((F, [sqrt(v)]))
+            
         
         for t in range(self.num_timesteps):
             #TODO: Extend F by the observation model error of the observations made at time t
@@ -150,9 +159,11 @@ class LocalizationWithRangeMeasurements(object):
             for ob in self.observations_across_time[t]:
                 state_curr = State(x[t * 2], x[t * 2 +1])
                 landmark_curr = self.landmarks[ob.landmark_id]
-                F = np.concatenate((F,
-                    self.measurement_cost(state_curr, landmark_curr, ob)))
-            
+                mc = self.measurement_cost(state_curr, landmark_curr, ob)
+                v = np.dot(np.dot(mc.transpose(), obs_noise_covariance_inv), mc)
+                # F = np.concatenate((F, mc))
+                F = np.concatenate((F, [sqrt(v)]))
+        
         return F
         
     def localize(self):
