@@ -1,7 +1,10 @@
 #include "basic_control/geometry.h"
 #include "basic_control/utils.h"
+#include "basic_control/tf_utils.h"
+#include "basic_control/controllers.h"
 
 #include <cmath>
+#include <vector>
 
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
@@ -9,68 +12,11 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
 
+#include <Eigen/Eigen>
+
 namespace basic_control {
 
 ros::Publisher marker_pub;
-static constexpr double kFreqHz = 50;
-
-// The bicycle model.
-struct Model {
-  constexpr static double L = 0.5;
-  constexpr static double W = 0.3;
-  constexpr static double Height = 0.25;
-  constexpr static double vr_change_rate_limit_per_sec = 3.0;
-  // Takes 4 seconds to rotate 90 degree.
-  constexpr static double delta_f_change_rate_limit_per_sec = M_PI / 2.0 / 4.0;
-  // Steering angle no more than 60 degree.
-  constexpr static double delta_f_limit = M_PI / 3.0;
-
-  Model() {
-    x = 0;
-    y = 0;
-    psi = 0;
-
-    vr = 1.0;
-    delta_f = 0;
-
-    target_vr = vr;
-    target_delta_f = delta_f;
-
-    last_update_ts = 0;
-  }
-
-  void Update(double ts) {
-    double delta_time = ts - last_update_ts;
-    last_update_ts = ts;
-    if (delta_time > 10) {
-      return;
-    }
-
-    // Update position base on current state.
-    x = x + vr * std::cos(psi) * delta_time;
-    y = y + vr * std::sin(psi) * delta_time;
-    psi = psi + vr * std::tan(delta_f) / L * delta_time;
-
-    // Update current state base on control.
-    double max_delta_f_change = delta_time * delta_f_change_rate_limit_per_sec;
-    double diff = std::abs(target_delta_f - delta_f);
-    double sign = (target_delta_f - delta_f > 0) ? 1.0 : -1.0;
-
-    delta_f += sign * (std::min(max_delta_f_change, diff));
-  }
-
-  void SetCommand(double target_vr, double target_delta_f) {
-    LimitByBounds(target_delta_f, (-1.0) * delta_f_limit, delta_f_limit);
-    this->target_vr = target_vr;
-    this->target_delta_f = target_delta_f;
-  }
-
-  double last_update_ts;
-  // x, y, psi as in the world frame.
-  double x, y, psi;
-  double vr, delta_f;
-  double target_vr, target_delta_f;
-};
 
 void GenRefLine(geometry::LineSegs& ls) {
   for (int i = 0; i < 500; i++) {
@@ -163,13 +109,16 @@ void DrawAgent(double x, double y, double yaw) {
 
   // Base on agent frame, draw the agent.
   visualization_msgs::Marker marker;
-  marker.header.frame_id = "agent_frame";
+  marker.header.frame_id = "world";
+  // marker.header.frame_id = "agent_frame";
 
   marker.ns = "visualization_marker";
   marker.id = 0;
 
   marker.type = visualization_msgs::Marker::CUBE;
   marker.action = visualization_msgs::Marker::ADD;
+
+  geometry_msgs::Pose p_agent;
 
   marker.pose.position.x = Model::L / 2;
   marker.pose.position.y = 0;
@@ -178,6 +127,15 @@ void DrawAgent(double x, double y, double yaw) {
   marker.pose.orientation.y = 0.0;
   marker.pose.orientation.z = 0.0;
   marker.pose.orientation.w = 1.0;
+
+
+  // marker.pose.position.x = Model::L / 2;
+  // marker.pose.position.y = 0;
+  // marker.pose.position.z = Model::Height / 2;
+  // marker.pose.orientation.x = 0.0;
+  // marker.pose.orientation.y = 0.0;
+  // marker.pose.orientation.z = 0.0;
+  // marker.pose.orientation.w = 1.0;
 
   marker.scale.x = Model::L;
   marker.scale.y = Model::W;
@@ -193,106 +151,43 @@ void DrawAgent(double x, double y, double yaw) {
   marker_pub.publish(marker);
 }
 
-struct CrossTrackErrorController {
-  CrossTrackErrorController() {
-    double ku = 0.3;
-    double tu = 2.0;
-    // This controller needs kFreqHz = 50 for a reasonable performance.
-    pid_p = new PID(ku * 0.6, tu / 8.0, tu * 8.0, 1.0 / kFreqHz);
-  }
-
-  ~CrossTrackErrorController() {
-    delete pid_p;
-  }
-
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
-    target_vr = 1.0;
-    double xte = GetCrossTrackError(m, ref);
-    pid_p->UpdateControl(xte);
-    target_delta_f = pid_p->GetControl();
-  }
-
-  static double GetSign(const geometry::Point2& p, const geometry::Point2& a, const geometry::Point2& b) {
-    geometry::Vector2 v_base = p - a, v_target = b - a;
-    double v = CrossProduct(v_base, v_target);
-    return v > 0 ? 1.0 : -1.0;
-  }
-
-  static double GetCrossTrackError(const Model& m, const geometry::LineSegs& ref) {
-    geometry::Point2 p(m.x, m.y);
-    int size = ref.segs.size();
-    if (size < 2) {
-      // TODO: print the line number here.
-      printf("Invalid condition.\n");
-      assert(false);
-      exit(0);
-    }
-    
-    double xte = DBL_MAX / 2;
-    double sign = 1.0;
-    for (int i = 0; i < size - 1; i++) {
-      const geometry::Point2& a = ref.segs[i];
-      const geometry::Point2& b = ref.segs[i + 1];
-      double tmp_dist = geometry::DistanceToSegment(p, a, b);
-      if (xte > tmp_dist) {
-        xte = tmp_dist;
-        sign = GetSign(p, a, b);
-      }
-
-    }
-    return xte * sign;
-  }
-
-  // Data.
-  PID* pid_p;
-};
-
-struct PurePursuitController {
-  PurePursuitController() = default;
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
-    target_vr = 1.0;
-    double lookahead_dist = target_vr * 2.0;
-    geometry::Point2 cur(m.x, m.y);
-    geometry::Point2 target = GetTargetPoint(m, ref, lookahead_dist);
-    double ld = geometry::LengthOfVector2(target - cur);
-    double angle = geometry::ShortestAngularDistance(m.psi, atan2(target.y - cur.y, target.x - cur.x));
-    target_delta_f = std::atan2(2.0 * Model::L * std::sin(angle), ld);
-  }
-
-  static geometry::Point2 GetTargetPoint(const Model& m, const geometry::LineSegs& ref, double lookahead_dist) {
-    geometry::Point2 p(m.x, m.y);
-    int size = ref.segs.size();
-    
-    double min_dist = DBL_MAX / 2;
-    int min_index = 0;
-    for (int i = 0; i < size; i++) {
-      const geometry::Point2& a = ref.segs[i];
-      double tmp_dist = geometry::LengthOfVector2(p - a);
-      if (min_dist > tmp_dist) {
-        min_dist = tmp_dist;
-        min_index = i;
-      }
-    }
-    
-    return ref.ExtendFromIndex(min_index, lookahead_dist);
-  }
-};
-
-struct ModelPredictiveController {
-  ModelPredictiveController() = default;
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
-    target_vr = 1.0;
-    target_delta_f = 0;
-    return;
-  }
-};
-
-void Run() {
+void RunCrossTrackErrorCtrl() {
+  double kFreqHz = 50;
   geometry::LineSegs ls;
   GenRefLine(ls);
-  // CrossTrackErrorController controller;
-  PurePursuitController controller;
+
+  // Build controllers.
+  CrossTrackErrorController controller(kFreqHz);
   
+  geometry::LineSegs agent_trajectory;
+  Model m;
+
+  agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    DrawRefLine(ls);
+
+    DrawTrajectory(agent_trajectory);
+    DrawAgent(m.x, m.y, m.psi);
+
+    double target_vr, target_delta_f;
+    controller.GetControl(target_vr, target_delta_f, m, ls);
+    m.SetCommand(target_vr, target_delta_f);
+    m.Update(1 / kFreqHz);
+    agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+    rate.sleep();
+  }
+}
+
+void RunPurePursuitCtrl() {
+  double kFreqHz = 20;
+  geometry::LineSegs ls;
+  GenRefLine(ls);
+
+  // Build controllers.
+  PurePursuitController controller;
 
   geometry::LineSegs agent_trajectory;
   Model m;
@@ -309,11 +204,63 @@ void Run() {
     double target_vr, target_delta_f;
     controller.GetControl(target_vr, target_delta_f, m, ls);
     m.SetCommand(target_vr, target_delta_f);
-    m.Update(GetTimeDouble());
+    m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
     rate.sleep();
   }
+}
+
+// LQR brings the cross track error and psi diff to 0.
+// The reference line is x-axis.
+void RunLqrAlone() {
+  double kFreqHz = 20;
+  LQR lqr;
+
+  double y_diff = 0.4;
+  double psi_diff = 0.2;
+  geometry::LineSegs agent_trajectory;
+  Model m;
+  m.y = y_diff;
+  m.psi = psi_diff;
+
+  agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+  double velocity = 1.0;
+  double l = velocity * (1 / kFreqHz);
+  Eigen::Matrix2d A;
+  A << 1, 0.1, 0, 1;
+  Eigen::Matrix2d B;
+  B << 0, 0, 0, 0.2;
+  Eigen::Matrix2d Q;
+  Q << 3, 0, 0, 3;
+  Eigen::Matrix2d R;
+  R << 1, 0, 0, 3;
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    DrawTrajectory(agent_trajectory);
+    DrawAgent(m.x, m.y, m.psi);
+
+    double target_vr, target_delta_f;
+    target_vr = velocity;
+    
+    Eigen::Vector2d x;
+    x << m.y, m.psi;
+    std::vector<Eigen::Vector2d> ctl_seq = lqr.GetControl(A, B, Q, R, x);
+
+    target_delta_f = ctl_seq.front()(1);
+
+    m.SetCommand(target_vr, target_delta_f);
+    m.Update(1 / kFreqHz);
+    agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+    rate.sleep();
+  }
+}
+
+void RunLqrWithFeedForward() {
+
 }
 }  // namespace basic_control
 
@@ -322,6 +269,8 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
   basic_control::marker_pub = nh.advertise<visualization_msgs::Marker>("/basic_control", 1);
 
-  basic_control::Run();
+  // basic_control::RunCrossTrackErrorCtrl();
+  // basic_control::RunPurePursuitCtrl();
+  // basic_control::RunLqrAlone();
   return 0;
 }

@@ -1,26 +1,20 @@
 #pragma once
+
+#include "constants.h"
+
 #include <chrono>
 
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-
 namespace basic_control {
+
+inline bool DoubleEquals(double a, double b) {
+  return std::abs(a - b) < EPS;
+}
+
 // A replacement for ros::Time::now().toSec().
 inline double GetTimeDouble() {
   return std::chrono::duration<double, std::chrono::seconds::period>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
-}
-
-inline tf2::Quaternion CreateQuaternionFromYaw(double yaw) {
-    tf2::Quaternion rtn;
-    rtn.setRPY(0, 0, yaw);
-    return rtn;
-}
-
-inline geometry_msgs::Quaternion CreateQuaternionMsgFromYaw(double yaw) {
-    return tf2::toMsg(CreateQuaternionFromYaw(yaw));
 }
 
 inline void LimitByBounds(double& v, double lb, double ub) {

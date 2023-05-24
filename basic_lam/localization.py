@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+To run this program:
+python3 localization.py
+"""
 import rospy
 import tf
 import tf.transformations as tr
@@ -170,6 +174,8 @@ class LocalizationWithRangeMeasurements(object):
         T = self.num_timesteps
         
         x_init = np.zeros((State.dim * T, ), dtype='float64')
+        # Note the cost function is not linear.
+        # In C++, ceres can be used, http://ceres-solver.org/.
         res = least_squares(self.cost_function, x_init)
         
         resulting_state_estimates_across_time = T * [ 0 ]

@@ -1,10 +1,13 @@
 #pragma once
+
+#include "constants.h"
+
 #include <cmath>
+#include <climits>
+#include <cfloat>
 #include <vector>
 
 namespace basic_control {
-
-const double EPS = 1e-10;
 
 namespace geometry {
 // Return -1 if the value is smaller than 0.
@@ -22,6 +25,7 @@ struct Point2 {
   double x, y;
 
   Point2() = default;
+  Point2(const Point2& o) = default;
 
   Point2(double x, double y) : x(x), y(y){};
 };
@@ -135,6 +139,23 @@ struct LineSegs {
     }
     return segs.back();
   }
+
+  int GetClosestPointIndex(double x, double y) const {
+    geometry::Point2 p(x, y);
+    int segs_size = segs.size();
+    
+    double min_dist = DBL_MAX / 2;
+    int min_index = 0;
+    for (int i = 0; i < segs_size; i++) {
+      const geometry::Point2& a = segs[i];
+      double tmp_dist = geometry::LengthOfVector2(p - a);
+      if (min_dist > tmp_dist) {
+        min_dist = tmp_dist;
+        min_index = i;
+      }
+    }
+    return min_index;
+  }
 };
 
 // Distance from p to the line segment (a, b).
@@ -180,6 +201,30 @@ inline double ShortestAngularDistance(double from, double to) {
 double AngleBetweenVector2(const Vector2 &a, const Vector2 &b) {
   return acos(DotProduct(a, b) / LengthOfVector2(a) / LengthOfVector2(b));
 }
+
+double GetDist(Point2 a, Point2 b) {
+  return std::hypot(b.x - a.x, b.y - a.y);
+}
+
+double TriangleArea(Point2 a, Point2 b, Point2 c) {
+  double lab = GetDist(a, b);
+  double lac = GetDist(a, c);
+  double lbc = GetDist(b, c);
+  double s = (lab + lac + lbc) / 2.0;
+  return std::sqrt(s * (s - lab) * (s - lac) * (s - lbc));
+}
+
+// Calculates 3-points curvature.
+// https://en.wikipedia.org/wiki/Menger_curvature
+double GetCurvature(Point2 a, Point2 b, Point2 c) {
+  double area = TriangleArea(a, b, c);
+  double lab = GetDist(a, b);
+  double lac = GetDist(a, c);
+  double lbc = GetDist(b, c);
+  return 4 * area / (lab * lac * lbc);
+}
+
+
 
 }  // namespace geometry
 

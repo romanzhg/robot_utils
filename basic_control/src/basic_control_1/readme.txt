@@ -5,10 +5,12 @@ Directory structure:
 ws_dir/src/basic_control_1
 <workspace directory>/src/<package name>
 
-To compile the program:
-Run
-catkin_make 
-in <workspace directory>.
+To compile and run:
+in <workspace directory>:
+catkin_make
+
+then run the output binary.
+
 
 
 

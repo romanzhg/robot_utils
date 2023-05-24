@@ -9,6 +9,7 @@ catkin_package()
 
 ## Build talker and listener
 include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(/usr/include/eigen3)
 
 add_executable(basic_control_ui src/basic_control_ui.cpp)
 target_link_libraries(basic_control_ui ${catkin_LIBRARIES})
