@@ -6,6 +6,7 @@
 #include <climits>
 #include <cfloat>
 #include <vector>
+#include <cassert>
 
 namespace basic_control {
 
@@ -198,15 +199,15 @@ inline double ShortestAngularDistance(double from, double to) {
 }
 
 // This gives an undirected angle. [0, pi].
-double AngleBetweenVector2(const Vector2 &a, const Vector2 &b) {
+inline double AngleBetweenVector2(const Vector2 &a, const Vector2 &b) {
   return acos(DotProduct(a, b) / LengthOfVector2(a) / LengthOfVector2(b));
 }
 
-double GetDist(Point2 a, Point2 b) {
+inline double GetDist(Point2 a, Point2 b) {
   return std::hypot(b.x - a.x, b.y - a.y);
 }
 
-double TriangleArea(Point2 a, Point2 b, Point2 c) {
+inline double TriangleArea(Point2 a, Point2 b, Point2 c) {
   double lab = GetDist(a, b);
   double lac = GetDist(a, c);
   double lbc = GetDist(b, c);
@@ -216,7 +217,7 @@ double TriangleArea(Point2 a, Point2 b, Point2 c) {
 
 // Calculates 3-points curvature.
 // https://en.wikipedia.org/wiki/Menger_curvature
-double GetCurvature(Point2 a, Point2 b, Point2 c) {
+inline double GetCurvature(Point2 a, Point2 b, Point2 c) {
   double area = TriangleArea(a, b, c);
   double lab = GetDist(a, b);
   double lac = GetDist(a, c);
@@ -224,6 +225,55 @@ double GetCurvature(Point2 a, Point2 b, Point2 c) {
   return 4 * area / (lab * lac * lbc);
 }
 
+// For two vectors a->p, a->b, if the rotation(counter-clockwise) from a->p to a->b
+// is in [0, PI], return 1, else if the rotation is in [-PI, 0) return -1.
+inline double GetRotationSign(const Point2& p, const Point2& a, const Point2& b) {
+  Vector2 v_from = p - a, v_to = b - a;
+  double v = CrossProduct(v_from, v_to);
+  return v > 0 ? 1.0 : -1.0;
+}
+
+// The returned value is positive if (x, y) is on the left of the reference line.
+inline double GetCrossTrackError(double x, double y, const LineSegs& ref) {
+  Point2 p(x, y);
+  int size = ref.segs.size();
+  if (size < 2) {
+    // TODO: print the line number here.
+    exit(0);
+  }
+  
+  double xte = DBL_MAX / 2;
+  double sign = 1.0;
+  for (int i = 0; i < size - 1; i++) {
+    const Point2& a = ref.segs[i];
+    const Point2& b = ref.segs[i + 1];
+    double tmp_dist = DistanceToSegment(p, a, b);
+    if (xte > tmp_dist) {
+      xte = tmp_dist;
+      sign = -1.0 * GetRotationSign(p, a, b);
+    }
+  }
+  return xte * sign;
+}
+
+inline double GetRotationValueHelper(double from_yaw, double to_yaw) {
+    double angle_if_rotate_left = std::fmod(to_yaw - from_yaw, 2 * M_PI);
+    double angle_if_rotate_right = 2 * M_PI - angle_if_rotate_left;
+
+    if (angle_if_rotate_left <= angle_if_rotate_right) {
+        return angle_if_rotate_left;
+    } else {
+        return -angle_if_rotate_right;
+    }
+}
+
+inline double GetRotationValue(double from_yaw, double to_yaw) {
+  if (from_yaw < to_yaw) {
+    return GetRotationValueHelper(from_yaw, to_yaw);
+  } else {
+    return -GetRotationValueHelper(to_yaw, from_yaw);
+  }
+}
 
 
 }  // namespace geometry

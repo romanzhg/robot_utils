@@ -10,6 +10,58 @@
 
 namespace basic_control {
 
+class PID {
+ public:
+  PID(double Kp, double Td, double Ti, double dt) {
+    this->Kp = Kp;
+    this->Td = Td;
+    this->Ti = Ti;
+    this->dt = dt;
+    current_error = 0;
+    previous_error = 0;
+    sum_error = 0;
+    current_deriv_error = 0;
+    control = 0;
+
+    alpha = 0.2;
+  };
+  
+  void UpdateControl(double new_error) {
+    current_error = alpha * previous_error + (1 - alpha) * new_error;
+    current_deriv_error = (current_error - previous_error) / dt;
+    sum_error += current_error * dt;
+
+    previous_error = current_error;
+  };
+
+  double GetControl() {
+    // Note the multiply by -1.0 here.
+    control = -1.0 * Kp * (current_error + Td * current_deriv_error + sum_error / Ti);
+    
+    return control;
+  };
+
+ private:
+  double Kp;
+  double Td;
+  double Ti;
+
+  double current_error;
+  double previous_error;
+
+  double sum_error;
+  
+  double current_deriv_error;
+  
+  // For now this is not used.
+  double previous_deriv_error;
+  
+  double control;
+  double dt;
+
+  double alpha;
+};
+
 // TODO: try CrossTrackErrorController with a look ahead distance.
 struct CrossTrackErrorController {
   CrossTrackErrorController(double freq) {
@@ -25,40 +77,9 @@ struct CrossTrackErrorController {
 
   void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
     target_vr = 1.0;
-    double xte = GetCrossTrackError(m, ref);
-    pid_p->UpdateControl(xte);
+    double cte = GetCrossTrackError(m.x, m.y, ref);
+    pid_p->UpdateControl(cte);
     target_delta_f = pid_p->GetControl();
-  }
-
-  static double GetSign(const geometry::Point2& p, const geometry::Point2& a, const geometry::Point2& b) {
-    geometry::Vector2 v_base = p - a, v_target = b - a;
-    double v = CrossProduct(v_base, v_target);
-    return v > 0 ? 1.0 : -1.0;
-  }
-
-  static double GetCrossTrackError(const Model& m, const geometry::LineSegs& ref) {
-    geometry::Point2 p(m.x, m.y);
-    int size = ref.segs.size();
-    if (size < 2) {
-      // TODO: print the line number here.
-      printf("Invalid condition.\n");
-      assert(false);
-      exit(0);
-    }
-    
-    double xte = DBL_MAX / 2;
-    double sign = 1.0;
-    for (int i = 0; i < size - 1; i++) {
-      const geometry::Point2& a = ref.segs[i];
-      const geometry::Point2& b = ref.segs[i + 1];
-      double tmp_dist = geometry::DistanceToSegment(p, a, b);
-      if (xte > tmp_dist) {
-        xte = tmp_dist;
-        sign = GetSign(p, a, b);
-      }
-
-    }
-    return xte * sign;
   }
 
   // Data.
@@ -92,16 +113,32 @@ struct ModelPredictiveController {
   }
 };
 
-// Here is a LQR implementation for a specific model.
+// Note the LQR is implemented for a specific model.
 struct LQR {
-  static constexpr int kIterations = 20;
-  LQR() = default;
+  static constexpr int kIterations = 100;
+  Eigen::Matrix2d A;
+  Eigen::Matrix2d B;
+  Eigen::Matrix2d Q;
+  Eigen::Matrix2d R;
+  double step_len;
 
-  std::vector<Eigen::Vector2d> GetControl(Eigen::Matrix2d A,
-                             Eigen::Matrix2d B,
-                             Eigen::Matrix2d Q, 
-                             Eigen::Matrix2d R,
-                             Eigen::Vector2d x) {
+  LQR(double step_len) {
+    this->step_len = step_len;
+
+    // x_new = A * x + B * u;
+    // cost = xT * Q * x + uT * R * u;
+    // x = [cross_track_error, psi_error].transpose()
+    // u = [<any>, tan(delta_f)].transpose()
+    // psi_error is assumed to be small, so sin(a) = a, this makes the model linear.
+    // cross_track_error = cross_track_error + sin(psi_error) * step
+    // psi_error = psi_error + step_size / L * tan(delta_f) 
+    A << 1, step_len, 0, 1;
+    B << 0, 0, 0, step_len / Model::L;
+    Q << 3, 0, 0, 3;
+    R << 1, 0, 0, 3;
+  }
+
+  std::vector<Eigen::Vector2d> GetControl(Eigen::Vector2d x, std::vector<Eigen::Vector2d>& out_state_seq) {
     Eigen::Matrix2d prev_p = Q;
     std::vector<Eigen::Vector2d> control_seq;
     std::vector<Eigen::Vector2d> state_seq;
@@ -109,9 +146,7 @@ struct LQR {
     
     for (int i = 0; i < kIterations; i++) {
       // Eigen::Matrix2d tmp_0 = R + B.transpose() * prev_p * B;
-      // std::cout << "tmp_0: " << tmp_0 << std::endl << std::endl;
       Eigen::Matrix2d new_k = - (R + B.transpose() * prev_p * B).inverse() * B.transpose() * prev_p * A;
-      // std::cout << "new_k: " << new_k << std::endl << std::endl;
       k_seq.push_back(new_k);
 
       Eigen::Matrix2d tmp = A + B * new_k;
@@ -124,45 +159,41 @@ struct LQR {
     for (const auto k : k_seq) {
       Eigen::Vector2d tmp_s = state_seq.back();
       control_seq.push_back(k * tmp_s);
-      // std::cout << "control: " << control_seq.back() << std::endl << std::endl;
       Eigen::Vector2d new_s = A * tmp_s + B * k * tmp_s;
       state_seq.push_back(new_s);
+      // std::cout << "control: " << control_seq.back() << std::endl << std::endl;
+      // std::cout << "new state: " << state_seq.back() << std::endl << std::endl;
     }
 
+    out_state_seq = state_seq;
     return control_seq;
   }
 };
 
-struct LqrFeedForward {
-  LqrFeedForward() = default;
+struct LqrWithFeedForward {
+  LqrWithFeedForward(double freq) : freq(freq) {
+    double target_vr = 1.0;
+    lqr_p = new LQR((1 / freq) * target_vr);
+    lqr_param = 1.0;
+  }
+
   void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
     target_vr = 1.0;
     
     double c = GetCurvature(m, ref);
-    double feed_forward_delta_f = Model::GetDeltaFFromCurvature(c);
-
-    // x_new = A * x + B * u;
-    // cost = xT * Q * x + uT * R * u;
-    // x = [cross_track_error, psi_error]T
-    // u = [<any>, delta_f]T
-    // delta_f is assumed to be small, so sin(a) = a, cos(a) = 1 - (a^2)/2, tan(a) = a,
-    // this makes the model linear.
-    double step_len = 0.1;
-    Eigen::Matrix2d A;
-    A << 1, step_len, 0, 1;
-    Eigen::Matrix2d B;
-    B << 0, 0, 0, 0.2;
-    Eigen::Matrix2d Q;
-    Q << 3, 0, 0, 3;
-    Eigen::Matrix2d R;
-    R << 1, 0, 0, 3;
+    double sign = c > 0 ? 1.0 : -1.0;
+    double feed_forward_delta_f = sign * Model::GetDeltaFFromCurvature(std::abs(c));
 
     double cte, psi_e;
-
+    GetError(m, ref, cte, psi_e);
     Eigen::Vector2d x;
-    x << m.y, m.psi;
+    x << cte, psi_e;
 
-    return;
+    std::vector<Eigen::Vector2d> state_seq;
+    std::vector<Eigen::Vector2d> ctl_seq = lqr_p->GetControl(x, state_seq);
+    double lqr_delta_f = std::atan(ctl_seq.front()(1));
+
+    target_delta_f = feed_forward_delta_f + lqr_param * lqr_delta_f;
   }
 
   // Error here is cur - target.
@@ -180,11 +211,12 @@ struct LqrFeedForward {
     geometry::Point2 p_next = ref.segs[min_index + 1];
 
     cte = geometry::GetDist(geometry::Point2(m.x, m.y), p_ref);
+    double sign = -1.0 * GetRotationSign(geometry::Point2(m.x, m.y), p_ref, p_next);
+    cte = sign * cte;
+
     geometry::Vector2 tangent_vec = p_next - p_prev;
-    double angle = std::atan2(tangent_vec.y, tangent_vec.x);
-    // RotateVector2
-    
-    psi_e = m.psi - std::atan2(tangent_vec.y, tangent_vec.x);
+    double psi_ref = std::atan2(tangent_vec.y, tangent_vec.x);
+    psi_e = -1.0 * geometry::GetRotationValue(m.psi, psi_ref);
   }
 
   static double GetCurvature(const Model& m, const geometry::LineSegs& ref) {
@@ -195,9 +227,20 @@ struct LqrFeedForward {
       return 0;
     }
     
-    return geometry::GetCurvature(ref.segs[min_index - 1], ref.segs[min_index], ref.segs[min_index + 1]);
+    geometry::Point2 p_prev = ref.segs[min_index - 1];
+    geometry::Point2 p_ref = ref.segs[min_index];
+    geometry::Point2 p_next = ref.segs[min_index + 1];
+
+    double curvature_value = geometry::GetCurvature(p_prev, p_ref, p_next);
+
+    double curvature_sign = geometry::GetRotationSign(geometry::Point2(m.x, m.y), p_ref, p_next);
+    return curvature_sign * curvature_value; 
   }
 
+  LQR* lqr_p;
+  double freq;
+  // A value in [0, 1.0] to enable/disable lqr.
+  double lqr_param;
 };
 
 }

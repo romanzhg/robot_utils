@@ -1,6 +1,6 @@
 /**
  * 
- *
+ * 
  * 
  * tf2 overall
  * http://docs.ros.org/en/melodic/api/tf2_geometry_msgs/html/c++/namespacetf2.html
@@ -17,8 +17,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 namespace basic_control {
-
-
 inline double GetYawFromQuaternion(const tf2::Quaternion &q) {
     tf2::Matrix3x3 m(q);
     double roll, pitch, yaw;
@@ -48,10 +46,12 @@ geometry_msgs::Pose PoseWorldToBody(geometry_msgs::Pose p_in_world, geometry_msg
   tf2::Vector3 origin(body_in_world.position.x, body_in_world.position.y, body_in_world.position.z);
   tf2::Transform trans(body_in_world_q, origin);
   tf2::Transform inv_trans = trans.inverse();
-  geometry_msgs::TransformStamped inv_trans_stamped
+
+  geometry_msgs::TransformStamped inv_trans_stamped;
+  inv_trans_stamped.transform = tf2::toMsg(inv_trans);
 
   geometry_msgs::Pose p_in_body;
-  tf2::doTransform(p_in_world, p_in_body, inv_trans);
+  tf2::doTransform(p_in_world, p_in_body, inv_trans_stamped);
 
   return p_in_body;
 }
@@ -62,8 +62,11 @@ geometry_msgs::Pose PoseBodyToWorld(geometry_msgs::Pose p_in_body, geometry_msgs
   tf2::Vector3 origin(body_in_world.position.x, body_in_world.position.y, body_in_world.position.z);
   tf2::Transform trans(body_in_world_q, origin);
 
+  geometry_msgs::TransformStamped trans_stamped;
+  trans_stamped.transform = tf2::toMsg(trans);
+
   geometry_msgs::Pose p_in_world;
-  tf2::doTransform(p_in_body, p_in_world, trans);
+  tf2::doTransform(p_in_body, p_in_world, trans_stamped);
   return p_in_world;
 }
 

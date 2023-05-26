@@ -13,8 +13,8 @@ struct Model {
   constexpr static double W = 0.3;
   constexpr static double Height = 0.25;
   constexpr static double vr_change_rate_limit_per_sec = 3.0;
-  // Takes 4 seconds to rotate 90 degree.
-  constexpr static double delta_f_change_rate_limit_per_sec = M_PI / 2.0 / 4.0;
+  // Takes 3 seconds to rotate 90 degree.
+  constexpr static double delta_f_change_rate_limit_per_sec = M_PI / 2.0 / 3.0;
   // Steering angle no more than 60 degree.
   constexpr static double delta_f_limit = M_PI / 3.0;
 
@@ -57,6 +57,13 @@ struct Model {
     LimitByBounds(target_delta_f, (-1.0) * delta_f_limit, delta_f_limit);
     this->target_vr = target_vr;
     this->target_delta_f = target_delta_f;
+  }
+
+  // Only for debug.
+  void SetCommandWithoutLimit(double target_vr, double target_delta_f) {
+    this->target_vr = target_vr;
+    this->target_delta_f = target_delta_f;
+    this->delta_f = target_delta_f;
   }
 
   // x, y, psi as in the world frame.
