@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <map>
 
 #include <Eigen/Eigen>
 
@@ -62,7 +63,6 @@ class PID {
   double alpha;
 };
 
-// TODO: try CrossTrackErrorController with a look ahead distance.
 struct CrossTrackErrorController {
   CrossTrackErrorController(double freq) {
     double ku = 0.3;
@@ -75,11 +75,11 @@ struct CrossTrackErrorController {
     delete pid_p;
   }
 
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
+  void GetControl(double& target_vr, double& target_steering, const Model& m, const geometry::LineSegs& ref) {
     target_vr = 1.0;
     double cte = GetCrossTrackError(m.x, m.y, ref);
     pid_p->UpdateControl(cte);
-    target_delta_f = pid_p->GetControl();
+    target_steering = pid_p->GetControl();
   }
 
   // Data.
@@ -88,28 +88,19 @@ struct CrossTrackErrorController {
 
 struct PurePursuitController {
   PurePursuitController() = default;
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
+  void GetControl(double& target_vr, double& target_steering, const Model& m, const geometry::LineSegs& ref) {
     target_vr = 1.0;
     double lookahead_dist = target_vr * 2.0;
     geometry::Point2 cur(m.x, m.y);
     geometry::Point2 target = GetTargetPoint(m, ref, lookahead_dist);
     double ld = geometry::LengthOfVector2(target - cur);
     double angle = geometry::ShortestAngularDistance(m.psi, atan2(target.y - cur.y, target.x - cur.x));
-    target_delta_f = std::atan2(2.0 * Model::L * std::sin(angle), ld);
+    target_steering = std::atan2(2.0 * Model::L * std::sin(angle), ld);
   }
 
   static geometry::Point2 GetTargetPoint(const Model& m, const geometry::LineSegs& ref, double lookahead_dist) {
     int min_index = ref.GetClosestPointIndex(m.x, m.y);
     return ref.ExtendFromIndex(min_index, lookahead_dist);
-  }
-};
-
-struct ModelPredictiveController {
-  ModelPredictiveController() = default;
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
-    target_vr = 1.0;
-    target_delta_f = 0;
-    return;
   }
 };
 
@@ -128,10 +119,10 @@ struct LQR {
     // x_new = A * x + B * u;
     // cost = xT * Q * x + uT * R * u;
     // x = [cross_track_error, psi_error].transpose()
-    // u = [<any>, tan(delta_f)].transpose()
+    // u = [<any>, tan(steering)].transpose()
     // psi_error is assumed to be small, so sin(a) = a, this makes the model linear.
     // cross_track_error = cross_track_error + sin(psi_error) * step
-    // psi_error = psi_error + step_size / L * tan(delta_f) 
+    // psi_error = psi_error + step_size / L * tan(steering) 
     A << 1, step_len, 0, 1;
     B << 0, 0, 0, step_len / Model::L;
     Q << 3, 0, 0, 3;
@@ -177,12 +168,12 @@ struct LqrWithFeedForward {
     lqr_param = 1.0;
   }
 
-  void GetControl(double& target_vr, double& target_delta_f, const Model& m, const geometry::LineSegs& ref) {
+  void GetControl(double& target_vr, double& target_steering, const Model& m, const geometry::LineSegs& ref) {
     target_vr = 1.0;
     
     double c = GetCurvature(m, ref);
     double sign = c > 0 ? 1.0 : -1.0;
-    double feed_forward_delta_f = sign * Model::GetDeltaFFromCurvature(std::abs(c));
+    double feed_forward_steering = sign * Model::GetDeltaFFromCurvature(std::abs(c));
 
     double cte, psi_e;
     GetError(m, ref, cte, psi_e);
@@ -191,9 +182,9 @@ struct LqrWithFeedForward {
 
     std::vector<Eigen::Vector2d> state_seq;
     std::vector<Eigen::Vector2d> ctl_seq = lqr_p->GetControl(x, state_seq);
-    double lqr_delta_f = std::atan(ctl_seq.front()(1));
+    double lqr_steering = std::atan(ctl_seq.front()(1));
 
-    target_delta_f = feed_forward_delta_f + lqr_param * lqr_delta_f;
+    target_steering = feed_forward_steering + lqr_param * lqr_steering;
   }
 
   // Error here is cur - target.
@@ -241,6 +232,221 @@ struct LqrWithFeedForward {
   double freq;
   // A value in [0, 1.0] to enable/disable lqr.
   double lqr_param;
+};
+
+struct ModelPredictiveController {
+  ModelPredictiveController() = default;
+  void GetControl(double& target_vr, double& target_steering, const Model& m, const geometry::LineSegs& ref) {
+    target_vr = 1.0;
+    target_steering = 0;
+    return;
+  }
+};
+
+// Predict agent state with a model, search the action sequence space to find a action sequence
+// that minimize the cost.
+struct ModelBasedSearchState {
+  double x, y, psi, steering;
+  int parent_index;
+  double path_cost;
+
+  // TODO: make sure this gives the correct order.
+	bool operator < (const ModelBasedSearchState& o) const {
+		return path_cost < o.path_cost;
+	}
+};
+
+namespace {
+const int kSearchSteps = 35;
+const int kSearchStepSize = 4000;
+const int kSteeringSteps = 11;
+const double kGridBinSize = 0.05;
+// Corresponds to 4 degree.
+const double kPsiBinSize = 0.07; 
+
+ModelBasedSearchState g_state[kSearchSteps][kSearchStepSize];
+}
+
+struct ModelBasedSearch {
+  double freq;
+  double steering_change_limit; 
+  double steering_step;
+  double move_step;
+  double search_lb;
+
+  ModelBasedSearchState* states_p;
+
+  int step_elem_count[kSearchSteps];
+
+  // the array size corresponds to floor(2 * M_PI / kPsiBinSize) + 1.
+  std::map<int, std::map<int, uint8_t[91]>> bins;
+
+  ModelBasedSearch(double freq) : freq(freq) {
+    // steering_change_limit = Model::steering_change_rate_limit_per_sec * (1.0 / freq);
+    steering_change_limit = 0.3;
+    steering_step = steering_change_limit / 5.0;
+
+    move_step = 0.2;
+    
+    search_lb = -1.0 * steering_change_limit;
+
+    // states_p = (ModelBasedSearchState*)malloc(kSearchSteps * kSearchStepSize * sizeof(ModelBasedSearchState));
+  }
+
+  ~ModelBasedSearch() {
+    // free(states_p);
+  }
+
+  ModelBasedSearchState& GetState(int index_0, int index_1) {
+    // return states_p[index_0 * kSearchStepSize + index_1];
+    return g_state[index_0][index_1];
+  }
+
+  void GetControl(double& target_vr, double& target_steering,
+      std::vector<geometry::Point2>& points, const Model& m, const geometry::LineSegs& ref) {
+    auto start_ms = GetTimeStampMs();
+    target_vr = 1.0;
+
+    bins.clear();
+
+    // Prepare to search.
+    ModelBasedSearchState start_state;
+    start_state.x = m.x;
+    start_state.y = m.y;
+    start_state.psi = m.psi;
+    start_state.steering = m.steering;
+    start_state.parent_index = -1;
+    start_state.path_cost = 0;
+    GetState(0, 0) = start_state;
+
+    step_elem_count[0] = 1;
+
+    // TODO: handle the case of reference line ends.
+    for (int step_index = 0; step_index < kSearchSteps - 1; step_index++) {
+      Expend(step_index, ref);
+    }
+
+    target_steering = BackwardTrack(kSearchSteps - 1, 0, points);
+    auto end_ms = GetTimeStampMs();
+    // std::cout << "points len: " << points.size() << std::endl;
+    std::cout << "elapsed time ms: " << end_ms - start_ms << std::endl;
+  }
+
+  // Returns true for a successful insertion, false if the bin is occupied.
+  bool InsertToGrid(int index_x, int index_y, int index_z) {
+    if (bins.find(index_x) == bins.end()) {
+      memset(bins[index_x][index_y], 0, sizeof(bins[index_x][index_y]));
+      bins[index_x][index_y][index_z] = 1;
+      return true;
+    }
+    if (bins[index_x].find(index_y) == bins[index_x].end()) {
+      memset(bins[index_x][index_y], 0, sizeof(bins[index_x][index_y]));
+      bins[index_x][index_y][index_z] = 1;
+      return true;
+    }
+    if (bins[index_x][index_y][index_z] == 1) {
+      return false;
+    } else {
+      bins[index_x][index_y][index_z] = 1;
+      return true;
+    }
+  }
+
+  void Expend(int step_index, const geometry::LineSegs& ref) {
+    std::vector<ModelBasedSearchState> tmp_vec;
+    int state_count = step_elem_count[step_index];
+    for (int i = 0; i < state_count; i++) {
+      const ModelBasedSearchState& src = GetState(step_index, i);
+      std::vector<geometry::Point2> near_points = GetNearPoints(src.x, src.y, ref);
+      geometry::Vector2 tangent_vec = near_points[1] - near_points[0];
+      double psi_ref = std::atan2(tangent_vec.y, tangent_vec.x);
+      for (int j = 0; j < kSteeringSteps; j++) {
+        ModelBasedSearchState tmp = src;
+        tmp.steering = src.steering + double(j) * steering_step + search_lb;
+        tmp.psi = tmp.psi + move_step * std::tan(tmp.steering) / Model::L;
+        tmp.x = tmp.x + move_step * std::cos(tmp.psi);
+        tmp.y = tmp.y + move_step * std::sin(tmp.psi);
+
+        tmp.path_cost = src.path_cost + GetClosestPointDistSqr(near_points, tmp.x, tmp.y);
+        tmp.parent_index = i;
+
+        if (std::abs(geometry::GetRotationValue(tmp.psi, psi_ref)) > (M_PI / 3)) {
+          continue;
+        }
+
+        int grid_index_x = std::floor(tmp.x / kGridBinSize);
+        int grid_index_y = std::floor(tmp.y / kGridBinSize);
+        int grid_index_psi = std::floor(geometry::NormalizeAnglePositive(tmp.psi) / kPsiBinSize);
+        bool insertion_succeed = InsertToGrid(grid_index_x, grid_index_y, grid_index_psi);
+        if (!insertion_succeed) {
+          continue;
+        }
+        tmp_vec.push_back(tmp);
+      }
+    }
+    std::sort(tmp_vec.begin(), tmp_vec.end());
+
+    for (int i = 0; i < tmp_vec.size() - 1; i++) {
+      if (tmp_vec[i].path_cost > tmp_vec[i + 1].path_cost) {
+        printf("error 1\n");
+        exit(0);
+      }
+    }
+    
+    for (int i = 0; i < std::min(kSearchStepSize, int(tmp_vec.size())); i++) {
+      // states[step_index + 1][i] = tmp_vec[i];
+      GetState(step_index + 1, i) = tmp_vec[i];
+    }
+    step_elem_count[step_index + 1] = std::min(kSearchStepSize, int(tmp_vec.size()));
+  }
+
+  double GetClosestPointDistSqr(const std::vector<geometry::Point2>& near_points, double x, double y) {
+    if (near_points.size() == 1) {
+      double dx = near_points[0].x - x;
+      double dy = near_points[0].y - y;
+      return dx * dx + dy * dy;
+    }
+
+    double rtn = DBL_MAX / 2;
+    for (int i = 0; i < near_points.size() - 1; i++) {
+      geometry::Point2 p(x, y);
+      geometry::Point2 a = near_points[i];
+      geometry::Point2 b = near_points[i + 1];
+      rtn = std::min(rtn, geometry::DistanceToSegment(p, a, b));
+    }
+    return rtn;
+  }
+
+  std::vector<geometry::Point2> GetNearPoints(double x, double y, const geometry::LineSegs& ref) {
+    std::vector<geometry::Point2> rtn;
+    int index = ref.GetClosestPointIndex(x, y);
+    if (index >= 2) {
+      rtn.push_back(ref.segs[index - 2]);
+    }
+    if (index >= 1) {
+      rtn.push_back(ref.segs[index - 1]);
+    }
+    rtn.push_back(ref.segs[index]);
+    if (index < ref.segs.size() - 1) {
+      rtn.push_back(ref.segs[index + 1]);
+    }
+    if (index < ref.segs.size() - 2) {
+      rtn.push_back(ref.segs[index + 2]);
+    }
+    return rtn;
+  }
+
+  double BackwardTrack(int step_index, int index, std::vector<geometry::Point2>& points) {
+    if (step_index == 3) {
+      // Note the choice of step_index.
+      points.push_back(geometry::Point2(GetState(step_index, index).x, GetState(step_index, index).y));
+      return GetState(step_index, index).steering;
+    } else {
+      auto& tmp_state = GetState(step_index, index);
+      points.push_back(geometry::Point2(tmp_state.x, tmp_state.y));
+      return BackwardTrack(step_index - 1, GetState(step_index, index).parent_index, points);
+    }
+  }
 };
 
 }

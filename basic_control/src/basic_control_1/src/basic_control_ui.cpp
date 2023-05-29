@@ -102,9 +102,9 @@ void DrawCtrlTrajectory(const geometry::LineSegs& ls) {
   line_strip.scale.x = 0.1;
 
   line_strip.color.a = 0.8;
-  line_strip.color.r = 1.0;
-  line_strip.color.g = 0;
-  line_strip.color.b = 1.0;
+  line_strip.color.r = 0;
+  line_strip.color.g = 1.0;
+  line_strip.color.b = 0;
 
   line_strip.lifetime = ros::Duration(0, 0);
 
@@ -245,9 +245,9 @@ void RunCrossTrackErrorCtrl() {
     DrawTrajectory(agent_trajectory);
     DrawAgent(m.x, m.y, m.psi);
 
-    double target_vr, target_delta_f;
-    controller.GetControl(target_vr, target_delta_f, m, ls);
-    m.SetCommand(target_vr, target_delta_f);
+    double target_vr, target_steering;
+    controller.GetControl(target_vr, target_steering, m, ls);
+    m.SetCommand(target_vr, target_steering);
     m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
@@ -274,9 +274,9 @@ void RunPurePursuitCtrl() {
     DrawTrajectory(agent_trajectory);
     DrawAgent(m.x, m.y, m.psi);
 
-    double target_vr, target_delta_f;
-    controller.GetControl(target_vr, target_delta_f, m, ls);
-    m.SetCommand(target_vr, target_delta_f);
+    double target_vr, target_steering;
+    controller.GetControl(target_vr, target_steering, m, ls);
+    m.SetCommand(target_vr, target_steering);
     m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
@@ -284,7 +284,8 @@ void RunPurePursuitCtrl() {
   }
 }
 
-void RunLqrShowSeq() {
+// Draw the agent/control trajectory of a single LQR run.
+void RunLqrDrawSeq() {
   double kFreqHz = 20;
   double velocity = 1.0;
   double step_len = velocity * (1 / kFreqHz);
@@ -313,11 +314,11 @@ void RunLqrShowSeq() {
   std::cout << ctl_seq.size() << " " << state_seq.size() << std::endl;
   for (int i = 0; i < ctl_seq.size(); i++) {
     Eigen::Vector2d ctl = ctl_seq[i];
-    double target_vr, target_delta_f;
+    double target_vr, target_steering;
     target_vr = 1.0;
-    target_delta_f = std::atan(ctl(1));
-    // std::cout << "actual target_delta_f in rad: " << target_delta_f << std::endl;
-    m.SetCommandWithoutLimit(target_vr, target_delta_f);
+    target_steering = std::atan(ctl(1));
+    // std::cout << "actual target_steering in rad: " << target_steering << std::endl;
+    m.SetCommandWithoutLimit(target_vr, target_steering);
     m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
@@ -358,7 +359,7 @@ void RunLqrAlone() {
     DrawTrajectory(agent_trajectory);
     DrawAgent(m.x, m.y, m.psi);
 
-    double target_vr, target_delta_f;
+    double target_vr, target_steering;
     target_vr = velocity;
     
     Eigen::Vector2d x;
@@ -367,9 +368,9 @@ void RunLqrAlone() {
     std::vector<Eigen::Vector2d> state_seq;
     std::vector<Eigen::Vector2d> ctl_seq = lqr.GetControl(x, state_seq);
 
-    target_delta_f = std::atan(ctl_seq.front()(1));
+    target_steering = std::atan(ctl_seq.front()(1));
 
-    m.SetCommand(target_vr, target_delta_f);
+    m.SetCommand(target_vr, target_steering);
     m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
@@ -396,13 +397,49 @@ void RunLqrWithFeedForward() {
     DrawTrajectory(agent_trajectory);
     DrawAgent(m.x, m.y, m.psi);
 
-    double target_vr, target_delta_f;
-    lqrff.GetControl(target_vr, target_delta_f, m, ls);
-    m.SetCommand(target_vr, target_delta_f);
+    double target_vr, target_steering;
+    lqrff.GetControl(target_vr, target_steering, m, ls);
+    m.SetCommand(target_vr, target_steering);
     m.Update(1 / kFreqHz);
     agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
 
     rate.sleep();
+  }
+}
+
+void RunModelBasedCtrl() {
+  double kFreqHz = 20;
+  ModelBasedSearch mbs(kFreqHz);
+
+  geometry::LineSegs ls;
+  GenRefLine(ls);
+  geometry::LineSegs agent_trajectory;
+  Model m;
+  m.y = -0.2;
+
+  agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    rate.sleep();
+
+    DrawRefLine(ls);
+
+    DrawTrajectory(agent_trajectory);
+    DrawAgent(m.x, m.y, m.psi);
+
+    double target_vr, target_steering;
+    std::vector<geometry::Point2> points;
+    points.clear();
+    geometry::LineSegs plan_trajectory;
+    plan_trajectory.segs.clear();
+    mbs.GetControl(target_vr, target_steering, points, m, ls);
+    m.SetCommand(target_vr, target_steering);
+    m.Update(1 / kFreqHz);
+    agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+
+    plan_trajectory.segs = points;
+    DrawCtrlTrajectory(plan_trajectory);
   }
 }
 }  // namespace basic_control
@@ -412,10 +449,12 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
   basic_control::marker_pub = nh.advertise<visualization_msgs::Marker>("/basic_control", 1);
 
+  // Uncomment to choose from different controllers.
   // basic_control::RunCrossTrackErrorCtrl();
   // basic_control::RunPurePursuitCtrl();
-  // basic_control::RunLqrShowSeq();
+  // basic_control::RunLqrDrawSeq();
   // basic_control::RunLqrAlone();
-  basic_control::RunLqrWithFeedForward();
+  // basic_control::RunLqrWithFeedForward();
+  basic_control::RunModelBasedCtrl();
   return 0;
 }

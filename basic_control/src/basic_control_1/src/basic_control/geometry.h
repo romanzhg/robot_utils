@@ -123,42 +123,6 @@ inline Vector2 RotateVector2(const Vector2 &a, double rad) {
   return Vector2(a.x * cos(rad) - a.y * sin(rad), a.x * sin(rad) + a.y * cos(rad));
 }
 
-
-struct LineSegs {
-  LineSegs() = default;
-
-  std::vector<Point2> segs;
-
-  Point2 ExtendFromIndex(int index, double dist) const {
-    // TODO: this is a very coarse implementation, calls for improvement.
-    for (int i = index; i < segs.size() - 1; i++) {
-      if (dist <= 0) {
-        return segs[i];
-      } else {
-        dist -= LengthOfVector2(segs[i + 1] - segs[i]);
-      }
-    }
-    return segs.back();
-  }
-
-  int GetClosestPointIndex(double x, double y) const {
-    geometry::Point2 p(x, y);
-    int segs_size = segs.size();
-    
-    double min_dist = DBL_MAX / 2;
-    int min_index = 0;
-    for (int i = 0; i < segs_size; i++) {
-      const geometry::Point2& a = segs[i];
-      double tmp_dist = geometry::LengthOfVector2(p - a);
-      if (min_dist > tmp_dist) {
-        min_dist = tmp_dist;
-        min_index = i;
-      }
-    }
-    return min_index;
-  }
-};
-
 // Distance from p to the line segment (a, b).
 inline double DistanceToSegment(const Point2 &p, const Point2 &a, const Point2 &b) {
   // Depends on the equal comparator defined above.
@@ -233,6 +197,49 @@ inline double GetRotationSign(const Point2& p, const Point2& a, const Point2& b)
   return v > 0 ? 1.0 : -1.0;
 }
 
+struct LineSegs {
+  LineSegs() = default;
+
+  std::vector<Point2> segs;
+
+  Point2 ExtendFromIndex(int index, double dist) const {
+    // TODO: this is a very coarse implementation, calls for improvement.
+    for (int i = index; i < segs.size() - 1; i++) {
+      if (dist <= 0) {
+        return segs[i];
+      } else {
+        dist -= LengthOfVector2(segs[i + 1] - segs[i]);
+      }
+    }
+    return segs.back();
+  }
+
+  int GetClosestPointIndex(double x, double y) const {
+    geometry::Point2 p(x, y);
+    int segs_size = segs.size();
+    
+    double min_dist = DBL_MAX / 2;
+    int min_index = 0;
+    for (int i = 0; i < segs_size; i++) {
+      const geometry::Point2& a = segs[i];
+      double tmp_dist = geometry::LengthOfVector2(p - a);
+      if (min_dist > tmp_dist) {
+        min_dist = tmp_dist;
+        min_index = i;
+      }
+    }
+    return min_index;
+  }
+
+  // TODO: improve the implementation here.
+  double GetClosestPointDistSqr(double x, double y) const{
+    int index = GetClosestPointIndex(x, y);
+    double dx = segs[index].x - x;
+    double dy = segs[index].y - y;
+    return dx * dx + dy * dy;
+  }
+};
+
 // The returned value is positive if (x, y) is on the left of the reference line.
 inline double GetCrossTrackError(double x, double y, const LineSegs& ref) {
   Point2 p(x, y);
@@ -267,6 +274,9 @@ inline double GetRotationValueHelper(double from_yaw, double to_yaw) {
     }
 }
 
+// Returns a positive value for rotate left(counter clockwise).
+// Returns a negative value for rotate right.
+// abs(value) is always in [0, PI].
 inline double GetRotationValue(double from_yaw, double to_yaw) {
   if (from_yaw < to_yaw) {
     return GetRotationValueHelper(from_yaw, to_yaw);

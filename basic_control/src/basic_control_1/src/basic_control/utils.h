@@ -5,7 +5,7 @@
 #include "geometry.h"
 
 #include <chrono>
-
+#include <thread>
 
 namespace basic_control {
 
@@ -24,6 +24,11 @@ inline double GetTimeDouble() {
       .count();
 }
 
+inline uint64_t GetTimeStampMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 inline void LimitByBounds(double& v, double lb, double ub) {
   if (v < lb) {
     v = lb;
@@ -33,7 +38,6 @@ inline void LimitByBounds(double& v, double lb, double ub) {
     return;
   }
 }
-
 
 // p_in_world = rotation_body_to_world * p_in_body + trans_in_world_world_to_body
 geometry::Point2 Point2WorldToBody(geometry::Point2 p_in_world, PlanarPose body_in_world) {
