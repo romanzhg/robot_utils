@@ -2,6 +2,7 @@
 #include "basic_control/utils.h"
 #include "basic_control/tf_utils.h"
 #include "basic_control/controllers.h"
+#include "basic_control/mpc.h"
 
 #include <cmath>
 #include <vector>
@@ -442,6 +443,35 @@ void RunModelBasedCtrl() {
     DrawCtrlTrajectory(plan_trajectory);
   }
 }
+
+void RunMpc() {
+  double kFreqHz = 20;
+
+  ModelPredictiveController mpc;
+
+  geometry::LineSegs ls;
+  // GenRefLine(ls);
+  geometry::LineSegs agent_trajectory;
+  Model m;
+  m.y = -0.2;
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    rate.sleep();
+
+    // DrawRefLine(ls);
+
+    DrawTrajectory(agent_trajectory);
+    DrawAgent(m.x, m.y, m.psi);
+
+    double target_vr, target_steering;
+    mpc.GetControl(target_vr, target_steering, m, ls);
+    m.SetCommand(target_vr, target_steering);
+    m.Update(1 / kFreqHz);
+    agent_trajectory.segs.push_back(geometry::Point2(m.x, m.y));
+  }
+
+}
 }  // namespace basic_control
 
 int main(int argc, char** argv) {
@@ -455,6 +485,7 @@ int main(int argc, char** argv) {
   // basic_control::RunLqrDrawSeq();
   // basic_control::RunLqrAlone();
   // basic_control::RunLqrWithFeedForward();
-  basic_control::RunModelBasedCtrl();
+  // basic_control::RunModelBasedCtrl();
+  basic_control::RunMpc();
   return 0;
 }

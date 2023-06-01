@@ -39,6 +39,14 @@ inline void LimitByBounds(double& v, double lb, double ub) {
   }
 }
 
+inline double DegreeToRadian(double degrees) {
+    return degrees * M_PI / 180.0;
+}
+
+inline double RadianToDegree(double radians) {
+    return radians * 180.0 / M_PI;
+}
+
 // p_in_world = rotation_body_to_world * p_in_body + trans_in_world_world_to_body
 geometry::Point2 Point2WorldToBody(geometry::Point2 p_in_world, PlanarPose body_in_world) {
   geometry::Point2 p_in_body;

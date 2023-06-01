@@ -18,7 +18,7 @@ struct Model {
   // Steering angle no more than 90 degree.
   constexpr static double steering_limit = M_PI / 2.0;
 
-  static double GetDeltaFFromCurvature(double curvature) {
+  static double GetSteeringFromCurvature(double curvature) {
     if (DoubleEquals(curvature, 0)) {
       return 0;
     }

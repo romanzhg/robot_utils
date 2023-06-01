@@ -54,7 +54,7 @@ class PID {
   
   double current_deriv_error;
   
-  // For now this is not used.
+  // Not used for now.
   double previous_deriv_error;
   
   double control;
@@ -173,7 +173,7 @@ struct LqrWithFeedForward {
     
     double c = GetCurvature(m, ref);
     double sign = c > 0 ? 1.0 : -1.0;
-    double feed_forward_steering = sign * Model::GetDeltaFFromCurvature(std::abs(c));
+    double feed_forward_steering = sign * Model::GetSteeringFromCurvature(std::abs(c));
 
     double cte, psi_e;
     GetError(m, ref, cte, psi_e);
@@ -234,15 +234,6 @@ struct LqrWithFeedForward {
   double lqr_param;
 };
 
-struct ModelPredictiveController {
-  ModelPredictiveController() = default;
-  void GetControl(double& target_vr, double& target_steering, const Model& m, const geometry::LineSegs& ref) {
-    target_vr = 1.0;
-    target_steering = 0;
-    return;
-  }
-};
-
 // Predict agent state with a model, search the action sequence space to find a action sequence
 // that minimize the cost.
 struct ModelBasedSearchState {
@@ -250,21 +241,20 @@ struct ModelBasedSearchState {
   int parent_index;
   double path_cost;
 
-  // TODO: make sure this gives the correct order.
-	bool operator < (const ModelBasedSearchState& o) const {
-		return path_cost < o.path_cost;
-	}
+  bool operator < (const ModelBasedSearchState& o) const {
+    return path_cost < o.path_cost;
+  }
 };
 
 namespace {
-const int kSearchSteps = 35;
-const int kSearchStepSize = 4000;
-const int kSteeringSteps = 11;
-const double kGridBinSize = 0.05;
+const int kMbsSearchSteps = 35;
+const int kMbsSearchStepSize = 4000;
+const int kMbsSteeringSteps = 11;
+const double kMbsGridBinSize = 0.05;
 // Corresponds to 4 degree.
-const double kPsiBinSize = 0.07; 
+const double kMbsPsiBinSize = 0.07; 
 
-ModelBasedSearchState g_state[kSearchSteps][kSearchStepSize];
+ModelBasedSearchState g_state[kMbsSearchSteps][kMbsSearchStepSize];
 }
 
 struct ModelBasedSearch {
@@ -274,11 +264,11 @@ struct ModelBasedSearch {
   double move_step;
   double search_lb;
 
-  ModelBasedSearchState* states_p;
+  // ModelBasedSearchState* states_p;
 
-  int step_elem_count[kSearchSteps];
+  int step_elem_count[kMbsSearchSteps];
 
-  // the array size corresponds to floor(2 * M_PI / kPsiBinSize) + 1.
+  // the array size corresponds to floor(2 * M_PI / kMbsPsiBinSize) + 1.
   std::map<int, std::map<int, uint8_t[91]>> bins;
 
   ModelBasedSearch(double freq) : freq(freq) {
@@ -290,7 +280,7 @@ struct ModelBasedSearch {
     
     search_lb = -1.0 * steering_change_limit;
 
-    // states_p = (ModelBasedSearchState*)malloc(kSearchSteps * kSearchStepSize * sizeof(ModelBasedSearchState));
+    // states_p = (ModelBasedSearchState*)malloc(kMbsSearchSteps * kMbsSearchStepSize * sizeof(ModelBasedSearchState));
   }
 
   ~ModelBasedSearch() {
@@ -298,7 +288,7 @@ struct ModelBasedSearch {
   }
 
   ModelBasedSearchState& GetState(int index_0, int index_1) {
-    // return states_p[index_0 * kSearchStepSize + index_1];
+    // return states_p[index_0 * kMbsSearchStepSize + index_1];
     return g_state[index_0][index_1];
   }
 
@@ -322,11 +312,11 @@ struct ModelBasedSearch {
     step_elem_count[0] = 1;
 
     // TODO: handle the case of reference line ends.
-    for (int step_index = 0; step_index < kSearchSteps - 1; step_index++) {
+    for (int step_index = 0; step_index < kMbsSearchSteps - 1; step_index++) {
       Expend(step_index, ref);
     }
 
-    target_steering = BackwardTrack(kSearchSteps - 1, 0, points);
+    target_steering = BackwardTrack(kMbsSearchSteps - 1, 0, points);
     auto end_ms = GetTimeStampMs();
     // std::cout << "points len: " << points.size() << std::endl;
     std::cout << "elapsed time ms: " << end_ms - start_ms << std::endl;
@@ -360,7 +350,7 @@ struct ModelBasedSearch {
       std::vector<geometry::Point2> near_points = GetNearPoints(src.x, src.y, ref);
       geometry::Vector2 tangent_vec = near_points[1] - near_points[0];
       double psi_ref = std::atan2(tangent_vec.y, tangent_vec.x);
-      for (int j = 0; j < kSteeringSteps; j++) {
+      for (int j = 0; j < kMbsSteeringSteps; j++) {
         ModelBasedSearchState tmp = src;
         tmp.steering = src.steering + double(j) * steering_step + search_lb;
         tmp.psi = tmp.psi + move_step * std::tan(tmp.steering) / Model::L;
@@ -374,9 +364,9 @@ struct ModelBasedSearch {
           continue;
         }
 
-        int grid_index_x = std::floor(tmp.x / kGridBinSize);
-        int grid_index_y = std::floor(tmp.y / kGridBinSize);
-        int grid_index_psi = std::floor(geometry::NormalizeAnglePositive(tmp.psi) / kPsiBinSize);
+        int grid_index_x = std::floor(tmp.x / kMbsGridBinSize);
+        int grid_index_y = std::floor(tmp.y / kMbsGridBinSize);
+        int grid_index_psi = std::floor(geometry::NormalizeAnglePositive(tmp.psi) / kMbsPsiBinSize);
         bool insertion_succeed = InsertToGrid(grid_index_x, grid_index_y, grid_index_psi);
         if (!insertion_succeed) {
           continue;
@@ -393,11 +383,11 @@ struct ModelBasedSearch {
       }
     }
     
-    for (int i = 0; i < std::min(kSearchStepSize, int(tmp_vec.size())); i++) {
+    for (int i = 0; i < std::min(kMbsSearchStepSize, int(tmp_vec.size())); i++) {
       // states[step_index + 1][i] = tmp_vec[i];
       GetState(step_index + 1, i) = tmp_vec[i];
     }
-    step_elem_count[step_index + 1] = std::min(kSearchStepSize, int(tmp_vec.size()));
+    step_elem_count[step_index + 1] = std::min(kMbsSearchStepSize, int(tmp_vec.size()));
   }
 
   double GetClosestPointDistSqr(const std::vector<geometry::Point2>& near_points, double x, double y) {
