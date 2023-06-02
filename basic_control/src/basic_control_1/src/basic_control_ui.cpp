@@ -450,16 +450,16 @@ void RunMpc() {
   ModelPredictiveController mpc;
 
   geometry::LineSegs ls;
-  // GenRefLine(ls);
+  GenRefLine(ls);
   geometry::LineSegs agent_trajectory;
   Model m;
-  m.y = -0.2;
+  m.y = -0.4;
 
   ros::Rate rate(kFreqHz);
   while (ros::ok()) {
     rate.sleep();
 
-    // DrawRefLine(ls);
+    DrawRefLine(ls);
 
     DrawTrajectory(agent_trajectory);
     DrawAgent(m.x, m.y, m.psi);

@@ -21,15 +21,11 @@ struct ModelPredictiveController {
 
 }
 
-
-
 /**
 
 The code referenced:
 https://github.com/tatsuyah/Model-Predictive-Control/blob/master/src/MPC.cpp
 https://github.com/tatsuyah/Model-Predictive-Control/blob/master/src/main.cpp
-
-
 
 
 #include <math.h>
