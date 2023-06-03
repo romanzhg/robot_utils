@@ -238,6 +238,22 @@ struct LineSegs {
     double dy = segs[index].y - y;
     return dx * dx + dy * dy;
   }
+
+  LineSegs GetSegmentsOfLen(double x, double y, double len) const {
+    LineSegs rtn;
+    int index = GetClosestPointIndex(x, y);
+    rtn.segs.push_back(segs[index]);
+    for (int i = index; i < segs.size() - 1; i++) {
+      double dist = GetDist(segs[i], segs[i + 1]);
+      if (dist < len) {
+        rtn.segs.push_back(segs[i + 1]);
+        len -= dist;
+      } else {
+        break;
+      }
+    }
+    return rtn;
+  }
 };
 
 // The returned value is positive if (x, y) is on the left of the reference line.

@@ -68,4 +68,12 @@ geometry::Point2 Point2PoseBodyToWorld(geometry::Point2 p_in_body, PlanarPose bo
 
   return p_in_world;
 }
+
+geometry::LineSegs RefLineWorldToBody(const geometry::LineSegs& l_in_world, PlanarPose body_in_world) {
+  geometry::LineSegs rtn;
+  for (const auto& p : l_in_world.segs) {
+    rtn.segs.push_back(Point2WorldToBody(p, body_in_world));
+  }
+  return rtn;
+}
 }

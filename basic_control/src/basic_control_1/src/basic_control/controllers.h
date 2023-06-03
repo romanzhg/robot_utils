@@ -116,13 +116,16 @@ struct LQR {
   LQR(double step_len) {
     this->step_len = step_len;
 
+    // Note that here error is defined as (actual value) - (target value).
+    // TODO: rewrite the code to so error is (target value) - (actual value).
+
     // x_new = A * x + B * u;
     // cost = xT * Q * x + uT * R * u;
     // x = [cross_track_error, psi_error].transpose()
     // u = [<any>, tan(steering)].transpose()
     // psi_error is assumed to be small, so sin(a) = a, this makes the model linear.
     // cross_track_error = cross_track_error + sin(psi_error) * step
-    // psi_error = psi_error + step_size / L * tan(steering) 
+    // psi_error = psi_error + step_size / L * tan(steering)
     A << 1, step_len, 0, 1;
     B << 0, 0, 0, step_len / Model::L;
     Q << 3, 0, 0, 3;
@@ -187,7 +190,7 @@ struct LqrWithFeedForward {
     target_steering = feed_forward_steering + lqr_param * lqr_steering;
   }
 
-  // Error here is cur - target.
+  // Note that error here is actual_value - target_value.
   static void GetError(const Model& m, const geometry::LineSegs& ref, double& cte, double& psi_e) {
     int min_index = ref.GetClosestPointIndex(m.x, m.y);
     int segs_size = ref.segs.size();

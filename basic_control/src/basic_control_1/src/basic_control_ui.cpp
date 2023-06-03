@@ -454,6 +454,7 @@ void RunMpc() {
   geometry::LineSegs agent_trajectory;
   Model m;
   m.y = -0.4;
+  m.psi = -0.1;
 
   ros::Rate rate(kFreqHz);
   while (ros::ok()) {
@@ -486,6 +487,6 @@ int main(int argc, char** argv) {
   // basic_control::RunLqrAlone();
   // basic_control::RunLqrWithFeedForward();
   // basic_control::RunModelBasedCtrl();
-  basic_control::RunMpc();
+  // basic_control::RunMpc();
   return 0;
 }
