@@ -100,7 +100,7 @@ class FG_eval {
       // Only consider the actuation at time t.
       AD<double> steering = vars[steering_start + t - 1];
 
-      AD<double> y_target = coeffs[3] * pow(x0, 3) + coeffs[2] * pow(x0, 2) + coeffs[1] * x0 + coeffs[0];
+      AD<double> y_target = coeffs[3] * CppAD::pow(x0, 3) + coeffs[2] * CppAD::pow(x0, 2) + coeffs[1] * x0 + coeffs[0];
       AD<double> derivative = 3 * coeffs[3] * CppAD::pow(x0, 2) + 2 * coeffs[2] * x0 + coeffs[1];
       AD<double> psi_target = CppAD::atan(derivative);
 
@@ -216,12 +216,11 @@ void ModelPredictiveController::GetControl(
 
   // Check some of the solution values
   if (solution.status == CppAD::ipopt::solve_result<Dvector>::success) {
-    std::cout << "ipopt::solve succeed." << std::endl;
+    target_steering = solution.x[steering_start];
   } else {
-    std::cout << "ipopt::solve failed." << std::endl;
+    target_steering = 0;
   }
 
-  target_steering = solution.x[steering_start];
   // for (int i = 0; i < kSteps - 1; i++) {
   //   std::cout << "returned target steering: " << solution.x[steering_start + i] << std::endl;
   // }

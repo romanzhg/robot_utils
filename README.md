@@ -9,7 +9,8 @@
 - Cross track error PID
 - Pure pursuit
 - LQR加前馈
-- Model based search (搜索所有可能的动作序列，根据cost最低的行动)
+- Model based search (根据运动模型预测机器人状态，搜索所有可能的动作序列，取cost最低的行动)
+- Model predictive control (根据运动模型预测机器人状态，使用ipopt做非线性优化，取cost最低的行动)
 
 ### todo
 参考线应转换到车体坐标系下，然后用一三次曲线去fit，结果用来求cross track error。

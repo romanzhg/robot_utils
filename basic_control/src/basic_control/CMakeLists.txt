@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(basic_control_1)
+project(basic_control)
 
 ## Find catkin and any catkin packages
 find_package(catkin REQUIRED COMPONENTS roscpp std_msgs visualization_msgs tf2 tf2_ros)
@@ -27,13 +27,13 @@ target_link_libraries(
 )
 
 add_executable(
-  basic_control_ui
+  basic_control_main
   
-  src/basic_control_ui.cpp
+  src/basic_control_main.cpp
 )
 
 target_link_libraries(
-  basic_control_ui
+  basic_control_main
   basic_mpc
   ${catkin_LIBRARIES}
 )

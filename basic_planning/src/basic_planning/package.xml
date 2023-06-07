@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>basic_control_1</name>
+  <name>basic_planning</name>
   <version>0.0.0</version>
-  <description>basic_control_1</description>
+  <description>basic_planning</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->

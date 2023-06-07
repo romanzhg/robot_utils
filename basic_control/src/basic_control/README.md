@@ -4,15 +4,15 @@ Note this is a ros/catkin workspace, requires ros noetic.
 
 Directory structure:
 
-ws_dir/src/basic_control_1
+ws_dir/src/basic_control
 
 corresponds to:
 
-<workspace directory>/src/<package name>
+**workspace directory**/src/**package name**
 
 To compile and run:
 
-in <workspace directory>:
+in **workspace directory**:
 
 catkin_make -DCMAKE_BUILD_TYPE=Debug
 

@@ -1,3 +1,3 @@
 # Basic control
 
-Refers to readme.txt in the ros packages.
+Refers to README.MD in the ros packages.
