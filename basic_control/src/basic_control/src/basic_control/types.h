@@ -11,6 +11,4 @@ struct PlanarPose {
   double x, y, psi;
 };
 
-
-
 }

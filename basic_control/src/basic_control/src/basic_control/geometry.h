@@ -158,6 +158,7 @@ inline double NormalizeAngle(double angle) {
   }
   return a;
 }
+
 inline double ShortestAngularDistance(double from, double to) {
   return NormalizeAngle(to - from);
 }
