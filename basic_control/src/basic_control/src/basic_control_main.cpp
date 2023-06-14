@@ -31,6 +31,8 @@ void GenRefLine(geometry::LineSegs& ls) {
 void DrawRefLine(const geometry::LineSegs& ls) {
   visualization_msgs::Marker line_strip;
   line_strip.header.frame_id = "world";
+  line_strip.header.stamp = ros::Time::now();
+
   line_strip.ns = "visualization_marker";
   line_strip.action = visualization_msgs::Marker::ADD;
   line_strip.pose.orientation.w = 1.0;
@@ -63,6 +65,8 @@ void DrawTrajectory(const geometry::LineSegs& ls) {
 
   visualization_msgs::Marker line_strip;
   line_strip.header.frame_id = "world";
+  line_strip.header.stamp = ros::Time::now();
+
   line_strip.ns = "visualization_marker";
   line_strip.action = visualization_msgs::Marker::ADD;
   line_strip.pose.orientation.w = 1.0;
@@ -95,6 +99,8 @@ void DrawCtrlTrajectory(const geometry::LineSegs& ls) {
 
   visualization_msgs::Marker line_strip;
   line_strip.header.frame_id = "world";
+  line_strip.header.stamp = ros::Time::now();
+
   line_strip.ns = "visualization_marker";
   line_strip.action = visualization_msgs::Marker::ADD;
   line_strip.pose.orientation.w = 1.0;
@@ -202,6 +208,7 @@ void DrawAgentAlt(double x, double y, double yaw) {
 
   // Base on agent frame, draw the agent.
   visualization_msgs::Marker marker;
+  marker.header.stamp = ros::Time::now();
   marker.header.frame_id = "world";
 
   marker.ns = "visualization_marker";

@@ -41,7 +41,19 @@ struct PlanarPose {
     return rtn;
   }
 
+  std::string ToString() {
+    return " x: " + std::to_string(x) + " y: " + std::to_string(y) + " psi: " + std::to_string(psi);
+  }
 };
 
+struct Path {
+  Path() = default;
+
+  std::vector<PlanarPose> path;
+
+  void Combine(const Path& o) {
+    path.insert(path.end(), o.path.begin(), o.path.end());
+  }
+};
 
 }

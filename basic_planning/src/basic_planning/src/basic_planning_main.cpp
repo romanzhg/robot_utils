@@ -1,6 +1,8 @@
 #include "rsmotion/rsmotion.h"
 #include "basic_planning/types.h"
 #include "basic_planning/tf_utils.h"
+#include "basic_planning/map.h"
+#include "basic_planning/hybird_astart.h"
 
 #include <iostream>
 
@@ -12,6 +14,37 @@
 
 namespace basic_planning {
 ros::Publisher marker_pub;
+ros::Publisher map_pub;
+
+void DrawRefLine(const Path& p) {
+  visualization_msgs::Marker line_strip;
+  line_strip.header.frame_id = "world";
+  line_strip.header.stamp = ros::Time::now();
+
+  line_strip.ns = "visualization_marker";
+  line_strip.action = visualization_msgs::Marker::ADD;
+  line_strip.pose.orientation.w = 1.0;
+  line_strip.id = 1;
+  line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+  line_strip.scale.x = 0.1;
+
+  line_strip.color.a = 0.8;
+  line_strip.color.r = 0;
+  line_strip.color.g = 0;
+  line_strip.color.b = 1.0;
+
+  line_strip.lifetime = ros::Duration(0, 0);
+
+  for (const PlanarPose& pp : p.path) {
+    geometry_msgs::Point tmp;
+    tmp.x = pp.x;
+    tmp.y = pp.y;
+    tmp.z = 0;
+    line_strip.points.push_back(tmp);
+  }
+
+  marker_pub.publish(line_strip);
+}
 
 void DrawAgent(double x, double y, double yaw) {
   // Publish agent tf first.
@@ -82,6 +115,7 @@ void DrawParkingLot(double x, double y, double yaw, int id, double scale) {
   // Base on agent frame, draw the agent.
   visualization_msgs::Marker marker;
   marker.header.frame_id = "world";
+  marker.header.stamp = ros::Time::now();
 
   marker.ns = "visualization_marker";
   marker.id = id;
@@ -107,11 +141,69 @@ void DrawParkingLot(double x, double y, double yaw, int id, double scale) {
   marker_pub.publish(marker);
 }
 
-void RunDrawReedsSheppPath() {
+void RunHybirdAstar() {
+  PlanarPose agent;
+  agent.x = 0;
+  agent.y = 0;
+  agent.psi = 0;
+
+  PlanarPose parking_lot_1;
+  double parking_log_scale = 1.4;
+  parking_lot_1.x = 10;
+  parking_lot_1.y = 3;
+  parking_lot_1.psi = M_PI_2;
+  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 1, parking_log_scale);
+  PlanarPose parking_pose = parking_lot_1.GetParkingForwardPose();
+
+  double tr = Model::GetTurningRadius();
+  // std::cout << "turning radius: " << tr << std::endl;
+
+  OccupancyGridMap ogm;
+  ogm.SetCircle(7, 2, 0.6, 80);
+
+  HybirdAstar ha;
+  Path p = ha.SearchPath(agent, parking_lot_1, ogm);
+  if (p.path.empty()) {
+    std::cout << "Failed to find path." << std::endl;
+  }
+
+  double kFreqHz = 10;
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    rate.sleep();
+
+    auto m = ogm.ToRosMap();
+    map_pub.publish(m);
+    DrawRefLine(p);
+  }
+}
+
+void RunMapDemo() {
   double kFreqHz = 10;
 
   PlanarPose agent;
-  DrawAgent(agent.x, agent.y, agent.psi);
+  agent.x = 0;
+  agent.y = 0;
+  agent.psi = 0;
+
+  OccupancyGridMap ogm;
+  ogm.SetSquare(3, 2, 0.5, 80);
+  ogm.SetRectangular(3.25, 2.25, 8, 8, 80);
+  ogm.SetCircle(-3, -2, 1, 80);
+  ogm.SetLine(4, 3, M_PI / 6.0, 3 * std::sqrt(2), 0.07, 80);
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    rate.sleep();
+
+    auto m = ogm.ToRosMap();
+    map_pub.publish(m);
+    DrawAgent(agent.x, agent.y, agent.psi);
+  }
+}
+
+void RunDrawReedsSheppPath() {
+  double kFreqHz = 10;
 
   PlanarPose parking_lot_1;
   double parking_log_scale = 1.4;
@@ -125,7 +217,7 @@ void RunDrawReedsSheppPath() {
 
   double tr = Model::GetTurningRadius();
   
-  std::cout << "turning radius: " << tr << std::endl;
+  // std::cout << "turning radius: " << tr << std::endl;
 
   rsmotion::algorithm::State fromState(0, 0, 0, false);
   rsmotion::algorithm::State toState(parking_pose.x / tr, parking_pose.y / tr, parking_pose.psi, false);
@@ -151,7 +243,10 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "basic_planning");
   ros::NodeHandle nh;
   basic_planning::marker_pub = nh.advertise<visualization_msgs::Marker>("/basic_planning", 1);
+  basic_planning::map_pub = nh.advertise<nav_msgs::OccupancyGrid>("/basic_planning_map", 1);
 
-  basic_planning::RunDrawReedsSheppPath();
+  // basic_planning::RunDrawReedsSheppPath();
+  // basic_planning::RunMapDemo();
+  basic_planning::RunHybirdAstar();
   return 0;
 }
