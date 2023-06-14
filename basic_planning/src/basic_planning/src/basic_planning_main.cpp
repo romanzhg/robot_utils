@@ -1,16 +1,16 @@
-#include "rsmotion/rsmotion.h"
-#include "basic_planning/types.h"
-#include "basic_planning/tf_utils.h"
-#include "basic_planning/map.h"
-#include "basic_planning/hybird_astart.h"
+#include <geometry_msgs/TransformStamped.h>
+#include <ros/ros.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <visualization_msgs/Marker.h>
 
 #include <iostream>
 
-#include <ros/ros.h>
-#include <visualization_msgs/Marker.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <geometry_msgs/TransformStamped.h>
+#include "basic_planning/hybird_astart.h"
+#include "basic_planning/map.h"
+#include "basic_planning/tf_utils.h"
+#include "basic_planning/types.h"
+#include "rsmotion/rsmotion.h"
 
 namespace basic_planning {
 ros::Publisher marker_pub;
@@ -129,7 +129,7 @@ void DrawParkingLot(double x, double y, double yaw, int id, double scale) {
 
   marker.scale.x = Model::L * scale;
   marker.scale.y = Model::W * scale;
-  marker.scale.z = 0 ;
+  marker.scale.z = 0;
 
   marker.color.a = 1;
   marker.color.r = 0.5;
@@ -152,7 +152,7 @@ void RunHybirdAstar() {
   parking_lot_1.x = 10;
   parking_lot_1.y = 3;
   parking_lot_1.psi = M_PI_2;
-  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 1, parking_log_scale);
+  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
   PlanarPose parking_pose = parking_lot_1.GetParkingForwardPose();
 
   double tr = Model::GetTurningRadius();
@@ -160,6 +160,7 @@ void RunHybirdAstar() {
 
   OccupancyGridMap ogm;
   ogm.SetCircle(7, 2, 0.6, 80);
+  // ogm.SetLine(0, 1, 0, 6, 0.2, 80);
 
   HybirdAstar ha;
   Path p = ha.SearchPath(agent, parking_lot_1, ogm);
@@ -169,12 +170,19 @@ void RunHybirdAstar() {
 
   double kFreqHz = 10;
   ros::Rate rate(kFreqHz);
+
+  int index = 0;
+  int path_size = p.path.size();
   while (ros::ok()) {
     rate.sleep();
+
+    auto cur_pose = p.path[index++ % path_size];
+    DrawAgent(cur_pose.x, cur_pose.y, cur_pose.psi);
 
     auto m = ogm.ToRosMap();
     map_pub.publish(m);
     DrawRefLine(p);
+    DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
   }
 }
 
@@ -207,19 +215,47 @@ void RunDrawReedsSheppPath() {
 
   PlanarPose parking_lot_1;
   double parking_log_scale = 1.4;
-  parking_lot_1.x = -Model::L / 2;
-  parking_lot_1.y = 1.4;
-  parking_lot_1.psi = 0;
-  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 1, parking_log_scale);
-
-  // PlanarPose parking_pose = parking_lot_1.GetParkingForwardPose();
-  PlanarPose parking_pose = parking_lot_1.GetParkingBackwardPose();
+  parking_lot_1.x = 10;
+  parking_lot_1.y = 3;
+  parking_lot_1.psi = M_PI_2;
+  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
+  PlanarPose parking_pose = parking_lot_1.GetParkingForwardPose();
 
   double tr = Model::GetTurningRadius();
-  
+
   // std::cout << "turning radius: " << tr << std::endl;
 
-  rsmotion::algorithm::State fromState(0, 0, 0, false);
+  PlanarPose from(5.406715, 1.319485, 0.3000000);
+  // PlanarPose from(0, 0, 0);
+  Path rs_path = GenRsPath(from, parking_pose);
+
+  ros::Rate rate(kFreqHz);
+  while (ros::ok()) {
+    rate.sleep();
+
+    DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
+    DrawRefLine(rs_path);
+  }
+}
+
+void RunDrawReedsSheppProgress() {
+  double kFreqHz = 10;
+
+  PlanarPose parking_lot_1;
+  double parking_log_scale = 1.4;
+  parking_lot_1.x = 10;
+  parking_lot_1.y = 3;
+  parking_lot_1.psi = M_PI_2;
+  DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
+
+  PlanarPose parking_pose = parking_lot_1.GetParkingForwardPose();
+  // PlanarPose parking_pose = parking_lot_1.GetParkingBackwardPose();
+
+  double tr = Model::GetTurningRadius();
+
+  // std::cout << "turning radius: " << tr << std::endl;
+  
+  rsmotion::algorithm::State fromState(1, 1, 0.3, false);
   rsmotion::algorithm::State toState(parking_pose.x / tr, parking_pose.y / tr, parking_pose.psi, false);
   rsmotion::algorithm::Path path = rsmotion::algorithm::SearchShortestPath(toState);
 
@@ -234,10 +270,10 @@ void RunDrawReedsSheppPath() {
     rsmotion::algorithm::State cur = rsmotion::algorithm::InterpolateNormalized(fromState, path, progress);
 
     DrawAgent(cur.X() * tr, cur.Y() * tr, cur.Phi());
-    DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 1, parking_log_scale);
+    DrawParkingLot(parking_lot_1.x, parking_lot_1.y, parking_lot_1.psi, 101, parking_log_scale);
   }
 }
-}
+}  // namespace basic_planning
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "basic_planning");
@@ -246,6 +282,7 @@ int main(int argc, char** argv) {
   basic_planning::map_pub = nh.advertise<nav_msgs::OccupancyGrid>("/basic_planning_map", 1);
 
   // basic_planning::RunDrawReedsSheppPath();
+  // basic_planning::RunDrawReedsSheppProgress();
   // basic_planning::RunMapDemo();
   basic_planning::RunHybirdAstar();
   return 0;

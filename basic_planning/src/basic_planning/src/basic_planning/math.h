@@ -16,6 +16,4 @@ inline double NormalizeAngle(double angle) {
   }
   return a;
 }
-
-
 }
