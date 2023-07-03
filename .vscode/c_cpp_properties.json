@@ -12,7 +12,8 @@
             "intelliSenseMode": "linux-gcc-x64",
             "compilerArgs": [
                 "-I/opt/ros/noetic/include/",
-                "-I/usr/include/eigen3/"
+                "-I/usr/include/eigen3/",
+                "-I/usr/local/zed/include/"
             ]
         }
     ],

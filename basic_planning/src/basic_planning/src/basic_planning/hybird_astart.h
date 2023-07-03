@@ -17,7 +17,7 @@ namespace basic_planning {
 
 // Helper functions.
 
-// Note the following two functions are problematic, need to debug.
+// Note the following two functions are problematic, need to debug (use GenRsPath).
 // p_in_world = rotation_body_to_world * p_in_body + trans_in_world_world_to_body
 // inline PlanarPose PlanarPoseWorldToBody(PlanarPose p_in_world, PlanarPose body_in_world) {
 //   PlanarPose p_in_body;
@@ -177,9 +177,6 @@ struct HybirdAstar {
   Path ConstructPath(HeapNode cur, Path rs_path) {
     Path astar_path;
     BackTrack(cur, astar_path);
-
-    std::cout << "astar end pose: " << cur.pose.ToString() << std::endl;
-
     astar_path.Combine(rs_path);
     return astar_path;
   }

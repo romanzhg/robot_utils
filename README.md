@@ -15,6 +15,11 @@
 ### todo
 参考线应转换到车体坐标系下，然后用一三次曲线去fit，结果用来求cross track error。
 
+## basic_planning
+针对自动驾驶中的泊车路径规划场景，实现了一个简化了的简化hyper Astar + Reeds Shepp。这个文件夹是一个ros workspace，代码开发于ros noetic/ubuntu 20.04。
+
+Reeds Shepp库取自https://github.com/BasGeertsema/rsmotion。
+
 ## rrt_planner_py
 RRT规划算法实现，代码框架取自waterloo cs477的作业。
 ### todo
