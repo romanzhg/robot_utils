@@ -1,6 +1,6 @@
 /*
  *
- * Adapted form zed tutorial.
+ * Adapted from zed tutorial.
  *
  */
 
