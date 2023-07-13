@@ -1,7 +1,5 @@
 /*
- *
- * Adapted from zed tutorial.
- *
+ * Record camera stream. Adapted from zed tutorial.
  */
 
 #include <iostream>

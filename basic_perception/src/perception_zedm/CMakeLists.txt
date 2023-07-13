@@ -25,16 +25,29 @@ include_directories(/usr/include/eigen3)
 link_directories(${ZED_LIBRARY_DIR})
 link_directories(${CUDA_LIBRARY_DIRS})
 
+SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
+
 add_executable(
   basic_perception_main
   
   src/basic_perception_main.cpp
 )
 
-SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
-
 target_link_libraries(
   basic_perception_main
+  ${catkin_LIBRARIES}
+
+  ${ZED_LIBS}
+)
+
+add_executable(
+  zed_svo_to_ros
+  
+  src/zed_svo_to_ros.cpp
+)
+
+target_link_libraries(
+  zed_svo_to_ros
   ${catkin_LIBRARIES}
 
   ${ZED_LIBS}

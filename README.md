@@ -12,23 +12,23 @@
 - Model based search (根据运动模型预测机器人状态，搜索所有可能的动作序列，取cost最低的行动)
 - Model predictive control (根据运动模型预测机器人状态，使用ipopt做非线性优化，取cost最低的行动)
 
-### todo
-参考线应转换到车体坐标系下，然后用一三次曲线去fit，结果用来求cross track error。
-
 ## basic_planning
 针对自动驾驶中的泊车路径规划场景，实现了一个简化了的简化hyper Astar + Reeds Shepp。这个文件夹是一个ros workspace，代码开发于ros noetic/ubuntu 20.04。
 
 Reeds Shepp库取自https://github.com/BasGeertsema/rsmotion。
 
+## basic_perception
+实现点云数据中的平面提取和显示，点云数据由zed mini双目相机输出（运行程序需要安装zed sdk 3.8及Eigen）。
+
 ## rrt_planner_py
 RRT规划算法实现，代码框架取自waterloo cs477的作业。
-### todo
-用kd-tree来加速最近点搜索。
 
 ## basic_lam
 一个mapper的实现，根据bag中激光雷达数据制图。代码框架取自waterloo cs477的作业。
 
 一个localizer的实现，优化基于最小二乘法。代码框架取自waterloo cs477的作业。
+
+一个思岚激光雷达手持建图的所用的cartographer 2d参数配置。
 
 ## monte_carlo_loc
 一个基本的particle filter定位程序，播bag验证。代码框架取自waterloo cs477的作业。

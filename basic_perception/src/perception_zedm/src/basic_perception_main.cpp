@@ -4,7 +4,7 @@
  *
  * Image size 1280×720.
  *
- *
+ * 
  */
 #include <geometry_msgs/TransformStamped.h>
 #include <ros/ros.h>
@@ -18,6 +18,7 @@
 #include <Eigen/Eigen>
 #include <iostream>
 #include <random>
+
 #include <sl/Camera.hpp>
 
 #include "basic_perception/geometry_3d.h"
@@ -277,6 +278,8 @@ void DetectPlanePlayback(std::string record_name) {
   auto camera_config = zed.getCameraInformation().camera_configuration;
   sl::Mat point_cloud(camera_config.resolution, sl::MAT_TYPE::F32_C4, sl::MEM::CPU);
 
+  sl::SensorsData sensor_data;
+
   zed.setSVOPosition(0);
   while (ros::ok()) {
     sleep(1);
@@ -287,9 +290,18 @@ void DetectPlanePlayback(std::string record_name) {
       int svo_position = zed.getSVOPosition();
       zed.setSVOPosition(svo_position + 15);
 
-      PubRosMessage(point_cloud);
-      FindPlanes(point_cloud);
+      // PubRosMessage(point_cloud);
+      // FindPlanes(point_cloud);
 
+      // IMU data.
+      zed.getSensorsData(sensor_data, sl::TIME_REFERENCE::IMAGE);
+
+      // get filtered orientation quaternion
+      auto imu_orientation = sensor_data.imu.pose.getOrientation();
+      // get raw acceleration
+      auto acceleration = sensor_data.imu.linear_acceleration;
+
+      cout << "IMU Orientation: {" << imu_orientation << "}, Acceleration: {" << acceleration << "}\n";
     } else if (returned_state == sl::ERROR_CODE::END_OF_SVOFILE_REACHED) {
       zed.setSVOPosition(0);
     } else if (returned_state == sl::ERROR_CODE::CAMERA_NOT_DETECTED) {
@@ -337,6 +349,7 @@ void DetectPlaneRealtime() {
     // zed.retrieveImage(image, sl::VIEW::LEFT);
     zed.retrieveMeasure(point_cloud, sl::MEASURE::XYZRGBA, sl::MEM::CPU, camera_config.resolution);
 
+    // Check data.
     // int x = point_cloud.getWidth() / 2;
     // int y = point_cloud.getHeight() / 2;
     // sl::float4 point_cloud_value;
